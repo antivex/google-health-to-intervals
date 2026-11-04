@@ -1,5 +1,9 @@
 # google-health-to-intervals
 
+**Did your Fitbit sleep, HRV, resting heart rate or weight stop arriving in intervals.icu on 2 November 2026?**
+Google turned off the old Fitbit Web API that day: tools that still used it now get `HTTP 410 Gone`.
+This bridge uses the new **Google Health API** instead.
+
 Copy your **Google Health** data (Fitbit, Pixel Watch, Fitbit Air) to
 **[intervals.icu](https://intervals.icu)** automatically, a few times a day.
 
@@ -265,7 +269,8 @@ The bridge is free and stays free. If it saves you time, you can leave a tip at 
 There is also a paid PDF guide,
 [Keep Your Fitbit Data After the Google Health Switch](https://antivex.gumroad.com/l/fitbit-google-health-intervals),
 for people who are not sure which route fits them: it compares Health Connect, Health Sync, Apple Health,
-CSV upload, the intervals.icu API and this bridge step by step. You don't need it to use the bridge.
+CSV upload, the intervals.icu API and this bridge step by step, shows how to fill the gap since 2 November,
+and lists this bridge's error messages with their fixes. You don't need it to use the bridge.
 
 ## License
 
