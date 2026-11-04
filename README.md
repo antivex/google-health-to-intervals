@@ -49,6 +49,14 @@ Google Health API  --->  your private GitHub repository (GitHub Actions)  --->  
 You need: the Google account that has your Fitbit / Pixel Watch data, an
 intervals.icu account, and a free GitHub account.
 
+Before you spend those 20-30 minutes: this bridge is **one** of several routes
+into intervals.icu, and on Android a Health Connect app is usually simpler. If
+you are not sure which route fits your phone, the paid guide
+[Keep Your Fitbit Data After the Google Health Switch](https://antivex.gumroad.com/l/fitbit-google-health-intervals)
+compares them side by side (including what each one does *not* carry, such as
+HRV through Apple Health) and shows how to fill the days missing since
+2 November. The bridge itself is free and stays free.
+
 ### 1. Create your copy of this repository (PRIVATE)
 
 1. Sign in to GitHub and open this repository's page.
