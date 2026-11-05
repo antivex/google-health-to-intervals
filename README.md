@@ -381,6 +381,8 @@ everybody.
 | `--from (...) is after --to (...)` | Swap the two dates. |
 | `The range is longer than 3650 days` | Split the backfill into shorter ranges. |
 | `'...' is not a date in the form YYYY-MM-DD` | Write dates as `2025-01-31`. |
+| `--at wants a time like 07:30` | `ghti schedule --at` takes a 24-hour time with a colon: `07:30`, `6:05`, `23:00`. |
+| `--days wants at least 1.` | `ghti schedule --days` is how many days each run copies: 1 or more, 3 by default. |
 
 ## Run on your computer
 
@@ -409,9 +411,37 @@ uv run ghti sync --dry-run --show-values  # look without writing
 uv run ghti backfill --from 2025-01-01    # copy older history
 uv run ghti export-csv -o wellness.csv    # last 30 days as CSV (--from/--to)
 uv run ghti status                        # when does the authorization expire?
+uv run ghti schedule                      # the daily task, written out (installs nothing)
 ```
 
 On a computer the encrypted token is saved in the same configuration folder.
+
+### Let it run every day on its own
+
+`ghti schedule` prints the daily task for the computer you are on — Windows Task
+Scheduler, or a one-line crontab entry on macOS and Linux — with the real paths
+already filled in, a log file, and the command to remove it again. It **installs
+nothing and changes no setting**: it prints the commands so you can read them
+first, and you run the ones you want.
+
+```
+uv run ghti schedule                      # for this computer, at 07:30
+uv run ghti schedule --at 6:05 --days 7   # another time, more days per run
+uv run ghti schedule --os linux           # see the version for another system
+```
+
+Two things it checks instead of assuming:
+
+- **the way `ghti` is called.** A scheduled task does not get the PATH of your
+  terminal, so the printed command uses absolute paths. The bare word `ghti` is
+  exactly what works by hand and fails at 07:30.
+- **where your secrets are.** From `config.env` any task finds them; from
+  environment variables exported in a terminal it does not, and the run would
+  fail every night. In that case `ghti schedule` says so before anything else.
+
+A run copies the last 3 days, so a night the laptop was asleep costs nothing:
+the next run picks the missed days up. Repeating a day is harmless — the same
+values overwrite the same day.
 
 ## Development
 

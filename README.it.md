@@ -100,6 +100,29 @@ La guida completa, passo per passo, è nel [README in inglese](README.md). In si
    Google, con le ore che restano prima della scadenza. Rilancialo ogni volta
    che i dati non arrivano. Sul computer: `ghti check`.
 
+## Farlo andare da solo ogni giorno
+
+Sul computer, `ghti schedule` **scrive** l'operazione giornaliera già pronta per
+il sistema che stai usando: le Operazioni pianificate su Windows, una riga di
+crontab su macOS e Linux. Con i percorsi veri, un file di registro e il comando
+per togliere tutto. **Non installa niente e non cambia nessuna impostazione**:
+stampa i comandi, li leggi, e lanci quelli che vuoi tu.
+
+```
+uv run ghti schedule                      # per questo computer, alle 07:30
+uv run ghti schedule --at 6:05 --days 7   # altra ora, più giorni per volta
+```
+
+Due cose le controlla invece di darle per buone: che il comando funzioni **senza
+il PATH** del tuo terminale (l'operazione pianificata non ce l'ha, ed è il
+motivo tipico per cui va a mano e di notte no) e che i tre segreti stiano in
+`config.env` e non solo nelle variabili d'ambiente — da quelle un'operazione
+pianificata non li vede e fallirebbe ogni notte. Se è così, te lo dice prima
+di tutto il resto.
+
+Ogni giro copia gli ultimi 3 giorni: una notte col portatile spento non costa
+niente, il giro dopo recupera.
+
 ## Ogni settimana
 
 Google fa scadere l'autorizzazione delle app in "Testing" dopo 7 giorni. Il

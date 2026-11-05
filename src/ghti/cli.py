@@ -1,4 +1,4 @@
-"""Command line: ghti demo | check | sync | backfill | auth-url | auth-finish | export-csv | status.
+"""Command line: ghti demo | check | sync | backfill | auth-url | auth-finish | export-csv | schedule | status.
 
 Exit codes: 0 ok, 1 error, 2 configuration problem (or no command given),
 3 Google authorization needed.
@@ -37,6 +37,10 @@ from ghti.github import (
     write_summary,
 )
 from ghti.oauth import REDIRECT_URI, TokenStore, build_auth_url, exchange_code, parse_redirect_url
+from ghti.schedule import DEFAULT_AT, DEFAULT_DAYS, PLATFORMS
+from ghti.schedule import build as build_schedule
+from ghti.schedule import other_platforms
+from ghti.schedule import text as schedule_text
 from ghti.mapping import merge, to_wellness_records
 from ghti.sync import SyncReport, export_csv, run_sync
 
@@ -222,6 +226,15 @@ def cmd_check(args) -> int:
     return code
 
 
+def cmd_schedule(args) -> int:
+    """Print the daily task for this computer. Installs nothing, writes nothing."""
+    plan = build_schedule(platform=args.os, at=args.at, days=args.days, log=args.log)
+    print(schedule_text(plan), end="")
+    print()
+    print(other_platforms(plan))
+    return 0
+
+
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
@@ -250,9 +263,10 @@ def cmd_status(args) -> int:
 SETUP_URL = f"{UPSTREAM}{SETUP_ANCHOR}"
 
 # The order below is the only order that works: step 1 runs on a bare clone, steps 2
-# to 4 do not. ORDER is what the tests check against the parser, so a renamed command
-# cannot leave this page pointing at nothing.
-ORDER = ("demo", "check", "auth-url", "auth-finish", "sync")
+# to 4 do not, and step 5 is worth reading only once step 4 has worked by hand.
+# ORDER is what the tests check against the parser, so a renamed command cannot
+# leave this page pointing at nothing.
+ORDER = ("demo", "check", "auth-url", "auth-finish", "sync", "schedule")
 
 
 def start_here() -> str:
@@ -268,6 +282,8 @@ def start_here() -> str:
         "  3. ghti auth-url      authorize Google in the browser (first time only),",
         '     ghti auth-finish "<the address the browser ends on>"',
         "  4. ghti sync          copy the last 3 days. Safe to repeat.",
+        "  5. ghti schedule      let it run on its own, every day. Prints the task for",
+        "                        your system and installs nothing.",
         "",
         "Steps 2 to 4 need the Google Cloud setup: free, about 20-30 minutes, once.",
         f"  {SETUP_URL}",
@@ -290,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Copy Google Health (Fitbit, Pixel Watch) wellness data to intervals.icu.",
         epilog=(
             "start here: ghti demo (needs nothing) -> ghti check -> ghti auth-url and\n"
-            'ghti auth-finish "<address>" -> ghti sync\n'
+            'ghti auth-finish "<address>" -> ghti sync -> ghti schedule\n'
             f"the setup steps 2 to 4 need (free, once): {SETUP_URL}\n"
             "run ghti with no command for the same thing, spelled out."
         ),
@@ -335,6 +351,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--days", type=int, default=30, help="used when --from is not given (default 30)")
     p.add_argument("--output", "-o", default="-", help="file name, or - for the screen (default)")
     p.set_defaults(func=cmd_export_csv)
+
+    p = sub.add_parser(
+        "schedule",
+        help="print the daily task for this computer; installs nothing, writes nothing",
+    )
+    p.add_argument("--at", default=DEFAULT_AT, metavar="HH:MM", help=f"when to run (default {DEFAULT_AT})")
+    p.add_argument("--days", type=int, default=DEFAULT_DAYS, help=f"days per run (default {DEFAULT_DAYS})")
+    p.add_argument("--os", choices=PLATFORMS, help="show it for another system (default: this one)")
+    p.add_argument("--log", help="log file (default: one inside the ghti config folder)")
+    p.set_defaults(func=cmd_schedule)
 
     p = sub.add_parser("status", help="show when the Google authorization expires")
     p.add_argument("--remind-hours", type=float, default=36, help="remind when fewer hours are left (default 36)")
