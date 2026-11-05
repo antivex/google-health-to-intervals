@@ -1,4 +1,4 @@
-"""Command line: ghti check | sync | backfill | auth-url | auth-finish | export-csv | status.
+"""Command line: ghti demo | check | sync | backfill | auth-url | auth-finish | export-csv | status.
 
 Exit codes: 0 ok, 1 error, 2 configuration problem, 3 Google authorization needed.
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import sys
 from datetime import date, timedelta
@@ -22,6 +23,7 @@ from ghti.check import text as check_text
 from ghti.config import REQUIRED, is_configured, load_settings, raw_values, redact
 from ghti.crypto import Keys
 from ghti.errors import AuthRequired, ConfigError, GhtiError
+from ghti.examples import readings as example_readings
 from ghti.github import (
     auth_instructions,
     help_footer,
@@ -32,6 +34,7 @@ from ghti.github import (
     write_summary,
 )
 from ghti.oauth import REDIRECT_URI, TokenStore, build_auth_url, exchange_code, parse_redirect_url
+from ghti.mapping import merge, to_wellness_records
 from ghti.sync import SyncReport, export_csv, run_sync
 
 MAX_DAYS = 3650
@@ -172,6 +175,35 @@ def cmd_export_csv(args) -> int:
     return 0
 
 
+DEMO_NOTE = (
+    "Example data, invented (no Google account, no network, nothing is sent).\n"
+    "It shows what a real sync would write to intervals.icu, and how the awkward\n"
+    "cases are handled: a nap is ignored, the later weigh-in of a day wins, a night\n"
+    "belongs to the day you wake up, and a day with 0 steps is left alone."
+)
+
+
+def cmd_demo(args) -> int:
+    """Show the output of a sync on example data: no setup, no credentials, no network."""
+    days = merge(example_readings())
+    records = to_wellness_records(days)
+    report = SyncReport(
+        start=min(days),
+        end=max(days),
+        days=days,
+        records_sent=len(records),
+        dry_run=True,
+    )
+    print(DEMO_NOTE)
+    print()
+    print(report.text(show_values=True))
+    if args.json:
+        print()
+        print("What intervals.icu would receive (PUT /wellness-bulk):")
+        print(json.dumps(records, indent=2, sort_keys=True))
+    return 0
+
+
 def cmd_check(args) -> int:
     """Say what is ready and what is missing, without writing anything."""
     with _http() as http:
@@ -219,6 +251,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("demo", help="show what a sync writes, on example data: no setup, no network")
+    p.add_argument("--json", action="store_true", help="also print the records intervals.icu would receive")
+    p.set_defaults(func=cmd_demo)
 
     p = sub.add_parser("check", help="check the setup before the first sync; writes nothing")
     p.set_defaults(func=cmd_check)

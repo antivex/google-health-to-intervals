@@ -43,6 +43,32 @@ Un avviso valido per tutte le strade: alcuni campi wellness in intervals.icu son
 sembra mancare, apri la finestra wellness, premi **Fields** e aggiungilo (per il
 calendario: **Options -> Wellness**).
 
+## Guarda cosa scrive, prima di installare niente (10 secondi)
+
+Non serve un account Google, non serve una chiave e non serve l'installazione:
+scarica questo repository, installa [uv](https://docs.astral.sh/uv/) e lancia
+
+```
+uv run ghti demo
+```
+
+Gira il codice vero della conversione su dati di esempio inventati, con la forma
+descritta dalla documentazione dell'API. Non legge niente da Google e non manda
+niente a nessuno:
+
+```
+Would send 3 day(s) to intervals.icu (2026-10-20 to 2026-10-22).
+  2026-10-20: steps=8123, vo2max=47.3
+  2026-10-21: sleepSecs=25200, restingHR=52, hrv=48.3, weight=72.9, spO2=96.4, steps=10456
+  2026-10-22: sleepSecs=23400
+```
+
+Mostra anche come vengono trattati i casi che sbagliano tutti: il sonnellino non
+viene contato, di due pesate nello stesso giorno vince la più recente, una notte
+appartiene al giorno in cui ti svegli e un giorno con 0 passi viene lasciato
+stare (non cancella quello che c'è su intervals.icu). Con `--json` vedi i record
+esatti che intervals.icu riceverebbe.
+
 ## Come si installa
 
 Prima di spendere i 20-30 minuti: questo ponte è **una** delle strade verso

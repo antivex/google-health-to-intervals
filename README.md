@@ -67,6 +67,36 @@ Google Health API  --->  your private GitHub repository (GitHub Actions)  --->  
   the day before it is needed.
 - Your data goes straight from Google to intervals.icu. There is no server of ours.
 
+## See what it writes, before setting anything up (10 seconds)
+
+You do not need a Google account, a key or the setup below to see what lands in
+intervals.icu. Download this repository, install [uv](https://docs.astral.sh/uv/)
+and run:
+
+```
+uv run ghti demo
+```
+
+It runs the real mapping code on example data that is invented, shaped like the
+API reference. Nothing is read from Google and nothing is sent anywhere:
+
+```
+Example data, invented (no Google account, no network, nothing is sent).
+It shows what a real sync would write to intervals.icu, and how the awkward
+cases are handled: a nap is ignored, the later weigh-in of a day wins, a night
+belongs to the day you wake up, and a day with 0 steps is left alone.
+
+Would send 3 day(s) to intervals.icu (2026-10-20 to 2026-10-22).
+  2026-10-20: steps=8123, vo2max=47.3
+  2026-10-21: sleepSecs=25200, restingHR=52, hrv=48.3, weight=72.9, spO2=96.4, steps=10456
+  2026-10-22: sleepSecs=23400
+```
+
+`uv run ghti demo --json` also prints the exact records intervals.icu would
+receive. The fields are the wellness fields of intervals.icu: `sleepSecs`,
+`restingHR`, `hrv`, `weight`, `spO2`, `steps`, `vo2max`, `respiration`. A field
+with no data is never sent, so it cannot erase what intervals.icu already has.
+
 ## Setup (about 20-30 minutes, once)
 
 You need: the Google account that has your Fitbit / Pixel Watch data, an
@@ -367,6 +397,7 @@ GHTI_TIMEZONE=Europe/Rome
 Commands:
 
 ```
+uv run ghti demo                          # example output, no setup and no network
 uv run ghti check                         # is the setup ready? (writes nothing)
 uv run ghti auth-url                      # print the consent link
 uv run ghti auth-finish "<address>"       # save the authorization

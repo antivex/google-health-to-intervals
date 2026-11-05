@@ -13,6 +13,7 @@ import respx
 
 import ghti.config as config
 from ghti.crypto import Keys
+from ghti.examples import HRV, RESPIRATION, RESTING_HR, SLEEP, SPO2, STEPS, VO2MAX, WEIGHT
 from ghti.oauth import TOKEN_ENDPOINT, StoredToken, TokenStore
 
 NOW = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
@@ -90,91 +91,11 @@ def mock_refresh(router, status: int = 200, body: dict | None = None):
     return router.post(TOKEN_ENDPOINT).mock(return_value=httpx.Response(status, json=body))
 
 
-def _date(day: int) -> dict:
-    return {"year": 2026, "month": 10, "day": day}
+# The example bodies live in the package (src/ghti/examples.py), so that
+# `ghti demo` and the tests always use the same data.
 
-
-# Shapes follow the v4 reference (DataPoint resource), read on 2026-10-22.
-SLEEP = {
-    "dataPoints": [
-        {
-            "dataPointName": "users/me/dataTypes/sleep/dataPoints/a",
-            "sleep": {
-                "interval": {
-                    "startTime": "2026-10-20T21:10:00Z",
-                    "startUtcOffset": "7200s",
-                    "endTime": "2026-10-21T05:00:00Z",
-                    "endUtcOffset": "7200s",
-                    "civilEndTime": {"date": _date(21), "time": {"hours": 7}},
-                },
-                "type": "STAGES",
-                "metadata": {"nap": False, "mainSleep": True},
-                "summary": {"minutesAsleep": "420", "minutesAwake": "35"},
-            },
-        },
-        {
-            "dataPointName": "users/me/dataTypes/sleep/dataPoints/b",
-            "sleep": {
-                "interval": {"endTime": "2026-10-21T13:30:00Z", "endUtcOffset": "7200s"},
-                "metadata": {"nap": True},
-                "summary": {"minutesAsleep": "25"},
-            },
-        },
-        {
-            "dataPointName": "users/me/dataTypes/sleep/dataPoints/c",
-            "sleep": {
-                "interval": {
-                    "endTime": "2026-10-22T04:30:00Z",
-                    "endUtcOffset": "7200s",
-                    "civilEndTime": {"date": _date(22)},
-                },
-                "metadata": {"nap": False},
-                "summary": {"minutesAsleep": "390"},
-            },
-        },
-    ]
-}
-RESTING_HR = {"dataPoints": [{"dailyRestingHeartRate": {"date": _date(21), "beatsPerMinute": "52"}}]}
-HRV = {
-    "dataPoints": [{"dailyHeartRateVariability": {"date": _date(21), "averageHeartRateVariabilityMilliseconds": 48.27}}]
-}
-WEIGHT = {
-    "dataPoints": [
-        {
-            "weight": {
-                "sampleTime": {"physicalTime": "2026-10-21T05:30:00Z", "utcOffset": "7200s"},
-                "weightGrams": 72400,
-            }
-        },
-        {
-            "weight": {
-                "sampleTime": {"physicalTime": "2026-10-21T18:00:00Z", "utcOffset": "7200s"},
-                "weightGrams": 72900,
-            }
-        },
-    ]
-}
-SPO2 = {
-    "dataPoints": [
-        {
-            "dailyOxygenSaturation": {
-                "date": _date(21),
-                "averagePercentage": 96.4,
-                "lowerBoundPercentage": 93,
-                "upperBoundPercentage": 99,
-            }
-        }
-    ]
-}
-VO2MAX = {"dataPoints": [{"dailyVo2Max": {"date": _date(20), "vo2Max": 47.3, "estimated": True}}]}
-RESPIRATION = {"dataPoints": []}
-STEPS = {
-    "rollupDataPoints": [
-        {"civilStartTime": {"date": _date(20)}, "civilEndTime": {"date": _date(21)}, "steps": {"countSum": "8123"}},
-        {"civilStartTime": {"date": _date(21)}, "civilEndTime": {"date": _date(22)}, "steps": {"countSum": "10456"}},
-        {"civilStartTime": {"date": _date(22)}, "civilEndTime": {"date": _date(23)}, "steps": {"countSum": "0"}},
-    ]
-}
+# re-exported for the tests
+__all__ = ["HRV", "RESPIRATION", "RESTING_HR", "SLEEP", "SPO2", "STEPS", "VO2MAX", "WEIGHT"]
 
 GOOGLE_ROUTES = {
     ("GET", f"{DT}/sleep/dataPoints:reconcile"): SLEEP,
