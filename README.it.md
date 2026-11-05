@@ -22,6 +22,27 @@ quello che hai già su intervals.icu.
 > nomi di campo non sono ancora stati verificati su dati reali. Se un valore ti
 > sembra sbagliato, apri una issue.
 
+## E lo strumento giusto per te?
+
+Questo ponte legge la **Google Health API nel cloud**: i tuoi dati devono stare in
+un account Google / Fitbit (app Fitbit, Fitbit Air, Pixel Watch).
+
+- **Va bene** se hai una Fitbit o un Pixel Watch e non hai un telefono Android su
+  cui far girare un'app, oppure se usi un iPhone.
+- **Non va bene** se i tuoi dati stanno solo in **Health Connect sul telefono
+  Android** (Mi Fitness, Zepp, Withings e simili): l'API nel cloud non li vede. In
+  quel caso serve un'app Android, per esempio
+  [daktak/intervals-icu-health-sync](https://github.com/daktak/intervals-icu-health-sync),
+  che legge Health Connect direttamente (peso, massa grassa, sonno, passi, HRV,
+  SpO2 e altro). Non c'entriamo niente con quell'app e non ci guadagniamo nulla.
+- Se non va bene nessuna delle due, l'API di intervals.icu e il caricamento di un
+  CSV wellness accettano questi campi anche a mano.
+
+Un avviso valido per tutte le strade: alcuni campi wellness in intervals.icu sono
+**nascosti per impostazione predefinita**. Se dopo una sincronizzazione un valore
+sembra mancare, apri la finestra wellness, premi **Fields** e aggiungilo (per il
+calendario: **Options -> Wellness**).
+
 ## Come si installa
 
 Prima di spendere i 20-30 minuti: questo ponte è **una** delle strade verso

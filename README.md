@@ -13,6 +13,27 @@ It is made for people who cannot use the Android apps that do this through
 Health Connect, especially **iPhone users**. It runs **for free on your own
 GitHub account** (GitHub Actions): no Raspberry Pi, no server, no app to install.
 
+### Is this the right tool for you?
+
+This bridge reads the **Google Health API in the cloud**, so your data has to be
+in a Google / Fitbit account (Fitbit app, Fitbit Air, Pixel Watch).
+
+- **It fits** if you have a Fitbit or Pixel Watch and no Android phone to run an
+  app on, or you are on iPhone.
+- **It does not fit** if your data only lives in **Health Connect on an Android
+  phone** (Mi Fitness, Zepp, Withings and similar), because the cloud API never
+  sees it. In that case an Android app is the right route: for example
+  [daktak/intervals-icu-health-sync](https://github.com/daktak/intervals-icu-health-sync)
+  reads Health Connect directly (weight, body fat, sleep, steps, HRV, SpO2 and
+  more) and writes to the intervals.icu wellness endpoint. We are not involved
+  with it, and we get nothing if you use it.
+- If neither fits, the intervals.icu API and a wellness CSV upload both accept
+  these fields by hand.
+
+A note for either route: some wellness fields are **hidden by default** in
+intervals.icu. If a value looks missing after a sync, open the wellness dialog,
+click **Fields** and add it (for the calendar: **Options -> Wellness**).
+
 | Google Health | intervals.icu wellness field |
 |---|---|
 | Sleep duration (time asleep, naps excluded) | `sleepSecs` |
