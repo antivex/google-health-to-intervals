@@ -138,12 +138,33 @@ def _ago(days: int) -> str:
     return f"{days} days ago"
 
 
-def summary(run: Run | None, now: datetime | None = None, schedule_hint: bool = True) -> str:
-    """What to print under `ghti status`: the last run, in two lines at most."""
+SETUP_FIRST = (
+    "  The setup on this computer is not finished yet: `ghti check` lists what is"
+    " missing. A daily task started before that stops every morning on the"
+    " configuration, so that is the thing to fix first, not the task."
+)
+
+
+def summary(
+    run: Run | None,
+    now: datetime | None = None,
+    schedule_hint: bool = True,
+    setup_ok: bool = True,
+) -> str:
+    """What to print under `ghti status`: the last run, in two lines at most.
+
+    `setup_ok` is False when a required setting is missing. An empty or old
+    diary then has a likelier cause than a scheduler that never fired, so
+    saying "the daily task is not firing" would send the user hunting in the
+    wrong place: a task that fires and dies on the configuration leaves the
+    same silence behind, because it stops before the diary is written.
+    """
     now = now or config.utcnow()
     if run is None:
         lines = ["No sync has run on this computer yet (or the diary was deleted)."]
-        if schedule_hint:
+        if not setup_ok:
+            lines.append(SETUP_FIRST)
+        elif schedule_hint:
             lines.append("  Run one with: ghti sync")
         return "\n".join(lines)
 
@@ -159,8 +180,11 @@ def summary(run: Run | None, now: datetime | None = None, schedule_hint: bool = 
         if run.skipped:
             lines.append("  Not authorized: " + ", ".join(run.skipped) + ".")
     if days >= STALE_AFTER.days:
+        lines.append(f"  Nothing has run for {days} days.")
         lines.append(
-            f"  Nothing has run for {days} days. If it should run on its own, the daily task"
-            " is not firing: check it, or print it again with `ghti schedule`."
+            SETUP_FIRST
+            if not setup_ok
+            else "  If it should run on its own, the daily task is not firing: check it,"
+            " or print it again with `ghti schedule`."
         )
     return "\n".join(lines)

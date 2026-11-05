@@ -152,3 +152,62 @@ def test_time_is_written_in_utc(settings):
     run = journal.Run(at=datetime(2026, 10, 22, 23, 30, tzinfo=UTC))
     assert run.as_dict()["at"] == "2026-10-22T23:30:00+00:00"
     assert journal.Run.from_dict(run.as_dict()) == run
+
+
+# --- a run that dies on the setup ------------------------------------------------
+# These three cover the silence that used to look like a scheduler problem: a daily
+# task fires, the secrets are not where it can see them, the sync stops before the
+# diary is written, and the next morning `ghti status` blamed the task.
+
+
+def test_missing_settings_still_write_a_diary_line(monkeypatch, capsys):
+    """No secrets at all: the failed run has to be readable the next morning."""
+    assert main(["sync"]) == 2
+    capsys.readouterr()
+
+    runs = journal.read()
+    assert len(runs) == 1
+    assert runs[0].command == "sync"
+    assert not runs[0].ok
+    assert "Missing setting(s)" in runs[0].error
+    assert "GOOGLE_CLIENT_ID" in runs[0].error
+
+    # and status reports it as a failure, not as "nothing ever ran"
+    out = journal.summary(journal.last(), setup_ok=False)
+    assert "Last sync" in out
+    assert "FAILED" in out
+    assert "No sync has run" not in out
+
+
+def test_dry_run_with_missing_settings_writes_nothing():
+    """A dry run is a person at the keyboard, not a nightly run: no diary line."""
+    assert main(["sync", "--dry-run"]) == 2
+    assert journal.read() == []
+
+
+def test_empty_diary_without_setup_does_not_blame_the_daily_task():
+    out = journal.summary(None, setup_ok=False)
+    assert "ghti check" in out
+    assert "not firing" not in out
+    assert "ghti sync" not in out  # pointless advice: it would fail the same way
+
+    ok = journal.summary(None, setup_ok=True)
+    assert "Run one with: ghti sync" in ok
+
+
+def test_old_diary_without_setup_points_at_the_setup_first():
+    old = journal.Run(
+        at=NOW - timedelta(days=5),
+        command="sync",
+        start=date(2026, 10, 15),
+        end=date(2026, 10, 17),
+        sent=3,
+    )
+    out = journal.summary(old, setup_ok=False)
+    assert "Nothing has run for 5 days." in out
+    assert "ghti check" in out
+    assert "not firing" not in out
+
+    blamed = journal.summary(old, setup_ok=True)
+    assert "the daily task is not firing" in blamed
+    assert "ghti check" not in blamed

@@ -90,9 +90,19 @@ def is_configured() -> bool:
     return any(values.get(key) for key in REQUIRED)
 
 
+def missing_settings(values: dict[str, str] | None = None) -> list[str]:
+    """The required settings that are not set, in the order of REQUIRED.
+
+    Empty means a run can at least start. `ghti status` uses it to tell apart
+    a daily task that never fired from one that fires and dies on the setup.
+    """
+    values = raw_values() if values is None else values
+    return [key for key in REQUIRED if not values.get(key)]
+
+
 def load_settings() -> Settings:
     values = raw_values()
-    missing = [key for key in REQUIRED if not values.get(key)]
+    missing = missing_settings(values)
     if missing:
         raise ConfigError(
             f"Missing setting(s): {', '.join(missing)}. "

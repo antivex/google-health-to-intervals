@@ -21,7 +21,15 @@ from ghti.check import exit_code as check_exit_code
 from ghti.check import markdown as check_markdown
 from ghti.check import run_checks
 from ghti.check import text as check_text
-from ghti.config import REQUIRED, is_configured, load_settings, raw_values, redact, utcnow
+from ghti.config import (
+    REQUIRED,
+    is_configured,
+    load_settings,
+    missing_settings,
+    raw_values,
+    redact,
+    utcnow,
+)
 from ghti.crypto import Keys
 from ghti.errors import AuthRequired, ConfigError, GhtiError
 from ghti.examples import readings as example_readings
@@ -126,6 +134,23 @@ def _run_and_record(command: str, settings, start: date, end: date, dry_run: boo
 # --- commands ------------------------------------------------------------------
 
 
+def _settings_or_record(command: str, dry_run: bool = False):
+    """Load the settings, and write a diary line if they are not usable.
+
+    `_run_and_record` only sees failures raised inside the sync, so a run that
+    dies here left no trace at all: the next morning `ghti status` said nothing
+    had ever run and blamed the daily task, which had fired on time. This is
+    the failure `ghti schedule` warns about - secrets exported in a terminal
+    are invisible to a scheduled task - so it is the one that must be readable.
+    """
+    try:
+        return load_settings()
+    except GhtiError as error:
+        if not dry_run:
+            journal.append(journal.failure(str(error), command=command))
+        raise
+
+
 def _unconfigured(args) -> bool:
     """The template repository itself has no secrets: its scheduled runs do nothing."""
     if not args.skip_if_unconfigured or is_configured():
@@ -141,7 +166,7 @@ def cmd_sync(args) -> int:
         return 0
     if not 1 <= args.days <= MAX_DAYS:
         raise ConfigError(f"--days must be between 1 and {MAX_DAYS}.")
-    settings = load_settings()
+    settings = _settings_or_record("sync", args.dry_run)
     end = settings.today()
     start = end - timedelta(days=args.days - 1)
     report = _run_and_record("sync", settings, start, end, args.dry_run)
@@ -149,7 +174,7 @@ def cmd_sync(args) -> int:
 
 
 def cmd_backfill(args) -> int:
-    settings = load_settings()
+    settings = _settings_or_record("backfill", args.dry_run)
     end = args.to or settings.today()
     if args.start > end:
         raise ConfigError(f"--from ({args.start}) is after --to ({end}).")
@@ -292,7 +317,7 @@ def cmd_status(args) -> int:
         return 0
     if not in_actions():
         # On GitHub the runner is new every time, so the diary is always empty there.
-        print(journal.summary(journal.last()))
+        print(journal.summary(journal.last(), setup_ok=not missing_settings()))
     settings = load_settings()
     token = TokenStore(settings.token_file, _keys(settings)).load()
     remaining = token.remaining()
