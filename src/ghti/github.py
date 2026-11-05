@@ -8,6 +8,9 @@ import sys
 
 from ghti.oauth import REDIRECT_URI
 
+UPSTREAM = "https://github.com/antivex/google-health-to-intervals"
+GUIDE_URL = "https://antivex.gumroad.com/l/fitbit-google-health-intervals"
+
 
 def in_actions() -> bool:
     return os.environ.get("GITHUB_ACTIONS") == "true"
@@ -19,6 +22,27 @@ def write_summary(markdown: str) -> None:
     if path:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(markdown.rstrip() + "\n\n")
+
+
+def help_footer() -> str:
+    """Where to look next when a run failed. Goes under the error message, never instead of it."""
+    lines = [
+        "### Stuck on this error?",
+        "",
+        f"1. The [FAQ]({UPSTREAM}#faq) covers the most frequent ones: missing values, the browser",
+        "   error during authorization, secrets changed after the last authorization.",
+        f"2. If it is not there, [open an issue]({UPSTREAM}/issues/new) with the text above. It is",
+        "   free, the error text carries no health data, and the fix then helps everybody.",
+        f"3. The [paid guide]({GUIDE_URL}) (mine, optional) lists this bridge's error messages one",
+        "   by one with the fix, and compares the other routes in case this one is not the right",
+        "   tool for you.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def help_line() -> str:
+    """The same pointer in one line, for a terminal."""
+    return f"FAQ: {UPSTREAM}#faq - still stuck? Open an issue: {UPSTREAM}/issues/new"
 
 
 def warning(message: str) -> None:

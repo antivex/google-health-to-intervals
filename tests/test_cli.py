@@ -117,3 +117,19 @@ def test_invalid_timezone(settings, monkeypatch, capsys):
 
 def test_status_in_unconfigured_template_is_skipped(github):
     assert main(["status", "--skip-if-unconfigured", "--fail-on-reminder"]) == 0
+
+
+def test_error_summary_says_where_to_look(github):
+    assert main(["sync"]) == 2
+    summary = github.read_text(encoding="utf-8")
+    assert "Missing setting(s)" in summary
+    assert "https://github.com/antivex/google-health-to-intervals#faq" in summary
+    assert "https://github.com/antivex/google-health-to-intervals/issues/new" in summary
+    assert "https://antivex.gumroad.com/l/fitbit-google-health-intervals" in summary
+
+
+def test_error_on_a_computer_points_to_the_faq(capsys):
+    assert main(["sync"]) == 2
+    err = capsys.readouterr().err
+    assert "#faq" in err and "issues/new" in err
+    assert "gumroad" not in err  # one line only in a terminal, no sales pitch

@@ -18,7 +18,15 @@ from ghti import __version__
 from ghti.config import REQUIRED, is_configured, load_settings, raw_values, redact
 from ghti.crypto import Keys
 from ghti.errors import AuthRequired, ConfigError, GhtiError
-from ghti.github import auth_instructions, in_actions, mask_in_logs, warning, write_summary
+from ghti.github import (
+    auth_instructions,
+    help_footer,
+    help_line,
+    in_actions,
+    mask_in_logs,
+    warning,
+    write_summary,
+)
 from ghti.oauth import REDIRECT_URI, TokenStore, build_auth_url, exchange_code, parse_redirect_url
 from ghti.sync import SyncReport, export_csv, run_sync
 
@@ -234,6 +242,13 @@ def _secrets() -> tuple[str, ...]:
     return tuple(values.get(key, "") for key in REQUIRED if key != "GOOGLE_CLIENT_ID")
 
 
+def _report_error(message: str) -> None:
+    """Print the error and say where the answer is: FAQ, issue, paid guide."""
+    print(f"Error: {message}", file=sys.stderr)
+    print(help_line(), file=sys.stderr)
+    write_summary(f"## Error\n\n{message}\n\n{help_footer()}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -246,13 +261,11 @@ def main(argv: list[str] | None = None) -> int:
         return exc.exit_code
     except GhtiError as exc:
         message = redact(str(exc), _secrets())
-        print(f"Error: {message}", file=sys.stderr)
-        write_summary(f"## Error\n\n{message}")
+        _report_error(message)
         return exc.exit_code
     except httpx.HTTPError as exc:
         message = redact(f"Network problem: {exc.__class__.__name__}: {exc}", _secrets())
-        print(f"Error: {message}", file=sys.stderr)
-        write_summary(f"## Error\n\n{message}")
+        _report_error(message)
         return 1
 
 
