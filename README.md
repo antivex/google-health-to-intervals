@@ -170,6 +170,22 @@ immediately copies the last 14 days.
 
 ### 9. Check that it works
 
+**One click, any time: Actions > Check setup > Run workflow.** It writes nothing
+and its Summary lists, line by line, what is ready and what is not: the
+secrets, the time zone, your intervals.icu key (one read-only request) and the
+Google authorization, with the hours left before it expires. Use it after the
+setup, and again whenever data stops arriving. On a computer: `ghti check`.
+
+```
+Setup check
+  ok    Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and INTERVALS_API_KEY are set.
+  ok    Time zone: Days are cut at midnight in Europe/Rome.
+  ok    intervals.icu: The key works. Data will be written to athlete i123456.
+  ok    Google authorization: Google accepted it. It expires on 2026-11-12 09:00 UTC (in 144 h).
+
+Everything is ready: the next run will copy your data.
+```
+
 - The Re-authorize run should be green, and its Summary shows a table of the
   days copied.
 - Open intervals.icu: the wellness values appear on the calendar and in the
@@ -251,10 +267,20 @@ lists anything not authorized), and that your device records that value.
 If the Summary shows a "Problems" section, please open an issue with that text
 (it contains no health data).
 
+**Nothing arrives and no run is red. Where do I look?**
+Run **Actions > Check setup**: it says which of the four parts (secrets, time
+zone, intervals.icu key, Google authorization) is not ready, without writing
+anything. Then check that the values are not hidden in intervals.icu (*Fields*
+in the wellness dialog).
+
 **Can I make my copy public?**
 Please don't. The token is encrypted, but a private repository is the safe choice.
 
 ## Error messages, one by one
+
+Not sure which part is broken? Run **Actions > Check setup** (or `ghti check`)
+first: it tests the secrets, the intervals.icu key and the Google authorization
+one by one and writes nothing.
 
 Every message the bridge can print, with the fix. Copy the first line of the
 error and look for it here. If yours is not in this list, please
@@ -336,6 +362,7 @@ GHTI_TIMEZONE=Europe/Rome
 Commands:
 
 ```
+uv run ghti check                         # is the setup ready? (writes nothing)
 uv run ghti auth-url                      # print the consent link
 uv run ghti auth-finish "<address>"       # save the authorization
 uv run ghti sync                          # copy the last 3 days (--days N to change)

@@ -65,6 +65,12 @@ La guida completa, passo per passo, è nel [README in inglese](README.md). In si
    riepilogo → approva → il browser mostra un errore (è normale) → copia
    l'indirizzo intero → di nuovo **Re-authorize**, incollalo in `redirect_url`.
 
+8. **Controlla**: Actions → **Check setup** → Run workflow. Non scrive niente e
+   nel riepilogo dice riga per riga cosa è pronto e cosa manca: i segreti, il
+   fuso orario, la chiave intervals.icu (una sola lettura) e l'autorizzazione
+   Google, con le ore che restano prima della scadenza. Rilancialo ogni volta
+   che i dati non arrivano. Sul computer: `ghti check`.
+
 ## Ogni settimana
 
 Google fa scadere l'autorizzazione delle app in "Testing" dopo 7 giorni. Il

@@ -1,4 +1,4 @@
-"""intervals.icu client: one bulk update of wellness records.
+"""intervals.icu client: one bulk update of wellness records, plus a read-only access check.
 
 PUT /api/v1/athlete/{id}/wellness-bulk with HTTP Basic auth: user "API_KEY",
 password = the personal API key (Settings > Developer Settings on intervals.icu).
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from datetime import date
 
 import httpx
 
@@ -35,6 +36,19 @@ class IntervalsClient:
         self.max_retries = max_retries
         self.sleep = sleep
         self.requests = 0
+
+    def check_access(self, day: date) -> None:
+        """One read-only request: does this key open this athlete's wellness page?
+
+        Used by `ghti check` before the first sync. It asks for a single day and
+        looks only at the status code: no value is kept, printed or written.
+        """
+        url = f"{BASE_URL}/athlete/{self.athlete_id}/wellness"
+        self.requests += 1
+        params = {"oldest": day.isoformat(), "newest": day.isoformat()}
+        response = self.http.get(url, params=params, auth=self.auth)
+        if response.status_code >= 400:
+            raise _error(response, self.athlete_id)
 
     def put_wellness(self, records: list[dict]) -> None:
         """Send records (each with "id" = ISO date), CHUNK_SIZE at a time."""

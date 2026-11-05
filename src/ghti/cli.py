@@ -1,4 +1,4 @@
-"""Command line: ghti sync | backfill | auth-url | auth-finish | export-csv | status.
+"""Command line: ghti check | sync | backfill | auth-url | auth-finish | export-csv | status.
 
 Exit codes: 0 ok, 1 error, 2 configuration problem, 3 Google authorization needed.
 """
@@ -15,6 +15,10 @@ from pathlib import Path
 import httpx
 
 from ghti import __version__
+from ghti.check import exit_code as check_exit_code
+from ghti.check import markdown as check_markdown
+from ghti.check import run_checks
+from ghti.check import text as check_text
 from ghti.config import REQUIRED, is_configured, load_settings, raw_values, redact
 from ghti.crypto import Keys
 from ghti.errors import AuthRequired, ConfigError, GhtiError
@@ -168,6 +172,21 @@ def cmd_export_csv(args) -> int:
     return 0
 
 
+def cmd_check(args) -> int:
+    """Say what is ready and what is missing, without writing anything."""
+    with _http() as http:
+        steps = run_checks(http)
+    print(check_text(steps))
+    write_summary(check_markdown(steps))
+    code = check_exit_code(steps)
+    if code and in_actions():
+        print(help_footer())
+        write_summary(help_footer())
+    elif code:
+        print(help_line(), file=sys.stderr)
+    return code
+
+
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
@@ -200,6 +219,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("check", help="check the setup before the first sync; writes nothing")
+    p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("sync", help="copy the last N days (default 3); safe to repeat")
     p.add_argument("--days", type=int, default=3)
