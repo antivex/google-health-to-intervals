@@ -299,6 +299,7 @@ everybody.
 
 | Message | What to do |
 |---|---|
+| `Paste the address from the browser: ghti auth-finish "http://127.0.0.1:8765/?state=..."` | You ran `auth-finish` with no address. Put the address from the browser between quotes, right after the command. In the workflow it goes in the *Address from the browser* field. |
 | `That does not look like the address from the browser` | Copy the **whole** address bar after you click Allow, starting with `http://127.0.0.1:8765/?state=`, and keep it in quotes. The browser page showing an error is normal (see the FAQ above). |
 | `Unexpected address host '...': expected 127.0.0.1` | You pasted a different link (often the consent link instead of the one you were sent back to). Use the address you landed on after allowing. |
 | `The address has no 'code' or 'state'` | The address was cut. Copy it again from the address bar, not from the page text. |
@@ -315,16 +316,19 @@ everybody.
 | `No Google authorization found (...)` | Nobody has authorized yet, or `state/token.enc` was deleted. Run *Actions > Re-authorize* (or `auth-url` plus `auth-finish`). |
 | `Cannot decrypt ...: GOOGLE_CLIENT_SECRET or INTERVALS_API_KEY changed since the last authorization` | The token is encrypted with those two secrets. After changing either one, authorize again. |
 | `The Google authorization expired on ...` or `has expired or was revoked` | Normal: a project in *Testing* mode expires every 7 days. Authorize again. `ghti status` says when it expires. |
+| `Could not refresh the Google token (HTTP ...)` | Google refused the renewal for another reason (often a network problem or a Google outage). Run *Check setup* to see which part fails; if it keeps failing, authorize again. |
 | `not a ghti token file` or `wrong key or damaged file` | Delete `state/token.enc` and authorize again. |
 
 ### Google Health API
 
 | Message | What to do |
 |---|---|
-| `error 403 ...: ... has not been used / is disabled` | Enable the **Google Health API** in your Google Cloud project. |
-| `error 403 ...` (any other) | That permission was not granted. Authorize again and tick every box on the consent screen. |
-| `error 401 ...` | The access token was refused. Authorize again. |
-| `error 429 ...` | Google's rate limit. Nothing to fix: the next run tries again. |
+| `Google Health API error 403 ...: ... has not been used / is disabled` | Enable the **Google Health API** in your Google Cloud project. |
+| `Google Health API error 403 ...` (any other) | That permission was not granted. Authorize again and tick every box on the consent screen. |
+| `Google Health API error 401 ...` | The access token was refused. Authorize again. |
+| `Google Health API error 429 ...` | Google's rate limit. Nothing to fix: the next run tries again. |
+| `Google Health API error 500 / 503 ...` (or any other code) | A problem on Google's side. Nothing to fix: the next run tries again. |
+| `Nothing could be read from Google Health: - <metric>: ...` | Every metric failed, so nothing was sent. The lines below the message say why, one metric at a time: read the first one and look it up here. Most often the authorization has to be done again. |
 
 ### intervals.icu
 
@@ -334,6 +338,7 @@ everybody.
 | `intervals.icu athlete '...' not found (HTTP 404)` | Wrong `INTERVALS_ATHLETE_ID`. |
 | `intervals.icu rate limit reached (HTTP 429)` | Nothing to fix: the next run tries again. |
 | `Too many intervals.icu requests in one run` | A backfill that is too long. Split it with `--from` / `--to` into shorter ranges. |
+| `intervals.icu error HTTP 500: ...` (or any other code) | A problem on the intervals.icu side. Nothing to fix: the next run tries again. |
 
 ### Command arguments
 

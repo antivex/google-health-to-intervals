@@ -1,3 +1,4 @@
+import ast
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -136,36 +137,62 @@ def test_error_on_a_computer_points_to_the_error_list(capsys):
     assert "gumroad" not in err  # one line only in a terminal, no sales pitch
 
 
+ERROR_CLASSES = {
+    "GhtiError",
+    "ConfigError",
+    "AuthRequired",
+    "AuthError",
+    "GoogleHealthError",
+    "IntervalsError",
+    "DecryptError",
+    "ArgumentTypeError",
+}
+MIN_KEY = 12  # shorter than this is not enough to look a message up
+KEY_LENGTH = 24  # how much of a fixed piece we expect to find, word for word
+
+
+def fixed_pieces(node: ast.AST) -> list[str]:
+    """The parts of a message that do not change with the data (no placeholders)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if isinstance(node, ast.JoinedStr):
+        return [v.value for v in node.values if isinstance(v, ast.Constant) and isinstance(v.value, str)]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return fixed_pieces(node.left) + fixed_pieces(node.right)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        return fixed_pieces(node.func.value)  # f"...".strip()
+    return []
+
+
+def error_messages() -> list[tuple[str, int, list[str]]]:
+    """Every message the bridge builds for a person, read from the source itself."""
+    found = []
+    for path in sorted((Path(__file__).resolve().parent.parent / "src" / "ghti").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+            if name not in ERROR_CLASSES or not node.args:
+                continue
+            keys = [piece.strip()[:KEY_LENGTH] for piece in fixed_pieces(node.args[0])]
+            keys = [key for key in keys if len(key) >= MIN_KEY]
+            if keys:
+                found.append((path.name, node.lineno, keys))
+    return found
+
+
 def test_readme_error_list_covers_the_real_messages():
-    """The footer promises a list with every message: keep that promise honest."""
+    """The footer promises a list with every message: keep that promise honest.
+
+    The list of messages comes from the code, not from this test, so a new message
+    without its line in the README makes the tests fail.
+    """
     readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
     section = readme.split("## Error messages, one by one", 1)[1].split("\n## ", 1)[0]
-    for message in [
-        "Missing setting(s)",
-        "is not a valid time zone",
-        "That does not look like the address from the browser",
-        "expected 127.0.0.1",
-        "has no 'code' or 'state'",
-        "access was not granted",
-        "created with different secrets",
-        "invalid_grant",
-        "did not return a refresh token",
-        "invalid_client",
-        "No Google authorization found",
-        "changed since the last authorization",
-        "expired or was revoked",
-        "not a ghti token file",
-        "wrong key or damaged file",
-        "is disabled",
-        "error 401",
-        "error 429",
-        "refused the request (HTTP 401)",
-        "not found (HTTP 404)",
-        "rate limit reached (HTTP 429)",
-        "Too many intervals.icu requests in one run",
-        "--days must be between 1 and 3650",
-        "is after",
-        "longer than 3650 days",
-        "is not a date in the form YYYY-MM-DD",
-    ]:
-        assert message in section, message
+    messages = error_messages()
+    assert len(messages) >= 20, "the messages are no longer being found in the source"
+    missing = [
+        f"{name}:{line} -> {keys[0]!r}" for name, line, keys in messages if not any(key in section for key in keys)
+    ]
+    assert not missing, "messages with no line in the README error list: " + "; ".join(missing)
