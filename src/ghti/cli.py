@@ -1,6 +1,7 @@
 """Command line: ghti demo | check | sync | backfill | auth-url | auth-finish | export-csv | status.
 
-Exit codes: 0 ok, 1 error, 2 configuration problem, 3 Google authorization needed.
+Exit codes: 0 ok, 1 error, 2 configuration problem (or no command given),
+3 Google authorization needed.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from ghti.crypto import Keys
 from ghti.errors import AuthRequired, ConfigError, GhtiError
 from ghti.examples import readings as example_readings
 from ghti.github import (
+    SETUP_ANCHOR,
+    UPSTREAM,
     auth_instructions,
     help_footer,
     help_line,
@@ -242,15 +245,61 @@ def cmd_status(args) -> int:
     return 0
 
 
+# --- where to start -------------------------------------------------------------
+
+SETUP_URL = f"{UPSTREAM}{SETUP_ANCHOR}"
+
+# The order below is the only order that works: step 1 runs on a bare clone, steps 2
+# to 4 do not. ORDER is what the tests check against the parser, so a renamed command
+# cannot leave this page pointing at nothing.
+ORDER = ("demo", "check", "auth-url", "auth-finish", "sync")
+
+
+def start_here() -> str:
+    """What to do first, for someone who just typed `ghti` and nothing else."""
+    lines = [
+        "ghti copies Google Health (Fitbit, Pixel Watch) wellness data to intervals.icu.",
+        "",
+        "Start here, in this order:",
+        "",
+        "  1. ghti demo          see what a sync writes, on example data.",
+        "                        Needs nothing: no Google account, no key, no network.",
+        "  2. ghti check         check your own setup. Reads only, sends nothing.",
+        "  3. ghti auth-url      authorize Google in the browser (first time only),",
+        '     ghti auth-finish "<the address the browser ends on>"',
+        "  4. ghti sync          copy the last 3 days. Safe to repeat.",
+        "",
+        "Steps 2 to 4 need the Google Cloud setup: free, about 20-30 minutes, once.",
+        f"  {SETUP_URL}",
+        "Step 1 needs none of it.",
+        "",
+        "Installed with uv? Put `uv run` in front: uv run ghti demo",
+        "",
+        "Every command, with its options: ghti --help",
+        f"Something broken? {help_line()}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 # --- parser and entry point ------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ghti", description="Copy Google Health (Fitbit, Pixel Watch) wellness data to intervals.icu."
+        prog="ghti",
+        description="Copy Google Health (Fitbit, Pixel Watch) wellness data to intervals.icu.",
+        epilog=(
+            "start here: ghti demo (needs nothing) -> ghti check -> ghti auth-url and\n"
+            'ghti auth-finish "<address>" -> ghti sync\n'
+            f"the setup steps 2 to 4 need (free, once): {SETUP_URL}\n"
+            "run ghti with no command for the same thing, spelled out."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = parser.add_subparsers(dest="command", required=True)
+    # Not required: `ghti` alone used to be an argparse error that said nothing about
+    # where to start, and it is the first thing a person types after cloning.
+    sub = parser.add_subparsers(dest="command")
 
     p = sub.add_parser("demo", help="show what a sync writes, on example data: no setup, no network")
     p.add_argument("--json", action="store_true", help="also print the records intervals.icu would receive")
@@ -309,6 +358,9 @@ def _report_error(message: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if getattr(args, "command", None) is None:
+        print(start_here(), end="")
+        return 2
     try:
         return args.func(args)
     except AuthRequired as exc:

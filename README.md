@@ -97,6 +97,9 @@ receive. The fields are the wellness fields of intervals.icu: `sleepSecs`,
 `restingHR`, `hrv`, `weight`, `spO2`, `steps`, `vo2max`, `respiration`. A field
 with no data is never sent, so it cannot erase what intervals.icu already has.
 
+Lost? `uv run ghti` with no command prints the four steps in order, and says
+which of them need the setup below.
+
 ## Setup (about 20-30 minutes, once)
 
 You need: the Google account that has your Fitbit / Pixel Watch data, an

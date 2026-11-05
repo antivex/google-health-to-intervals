@@ -11,6 +11,7 @@ from ghti.oauth import REDIRECT_URI
 UPSTREAM = "https://github.com/antivex/google-health-to-intervals"
 GUIDE_URL = "https://antivex.gumroad.com/l/fitbit-google-health-intervals"
 ERRORS_ANCHOR = "#error-messages-one-by-one"
+SETUP_ANCHOR = "#setup-about-20-30-minutes-once"
 
 
 def in_actions() -> bool:
