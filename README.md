@@ -1,5 +1,7 @@
 # google-health-to-intervals
 
+> 🇮🇹 Versione breve in italiano: [README.it.md](README.it.md)
+
 **Did your Fitbit sleep, HRV, resting heart rate or weight stop arriving in intervals.icu on 2 November 2026?**
 Google turned off the old Fitbit Web API that day: tools that still used it now get `HTTP 410 Gone`.
 This bridge uses the new **Google Health API** instead.
