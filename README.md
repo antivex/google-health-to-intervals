@@ -491,8 +491,23 @@ uv run pytest -q
 ```
 
 The tests are offline: every HTTP call is faked. The mapping between Google's
-fields and intervals.icu lives in one file, `src/ghti/mapping.py`; the places
-not yet checked against real data are marked `TO VERIFY WITH REAL DATA`.
+fields and intervals.icu lives in one file, `src/ghti/mapping.py`.
+
+One more command checks that file against Google itself, with no account and no
+credentials:
+
+```
+uv run python tools/check_spec.py
+```
+
+It downloads the Google Health API's public discovery document — the
+machine-readable spec its own client libraries are generated from — and asserts
+that every data type, JSON field, filter path, response key, page cap and scope
+this bridge uses is really there. On 2026-11-05 all 32 checks passed against
+revision `20261105`. What a spec cannot settle is what a number *means* (is
+Google's nightly HRV the rMSSD intervals.icu expects? does a steps total of 0
+mean "did not walk" or "watch not worn"?): those assumptions, and only those,
+are still marked `TO VERIFY WITH REAL DATA`.
 
 ## Support / paid guide
 

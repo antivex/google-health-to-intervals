@@ -7,9 +7,18 @@ Sources (read on 2026-10-22):
 - https://developers.google.com/health/aggregate-data
 - intervals.icu OpenAPI: https://intervals.icu/api/v1/docs (schema "Wellness")
 
-TO VERIFY WITH REAL DATA: everything marked
-with this tag was written from the documentation only, without a real response.
-If Google answers differently, fix it here; the rest of the code does not change.
+Field names, filter paths, response keys and page caps were checked on
+2026-11-05 against the API's own machine-readable discovery document
+(revision 20261105, https://health.googleapis.com/$discovery/rest?version=v4):
+`tools/check_spec.py` repeats that check in one command and fails if Google
+renames anything. What that check cannot answer is what a number *means* -
+whether Google's nightly HRV is the rMSSD intervals.icu expects, whether a
+steps total of 0 means "did not walk" or "watch not worn". Those assumptions
+are the ones still marked
+
+TO VERIFY WITH REAL DATA: written from the documentation only, without a real
+response. If Google answers differently, fix it here; the rest of the code does
+not change.
 """
 
 from __future__ import annotations
@@ -109,6 +118,12 @@ def other_spelling(filter_field: str) -> str | None:
     refuses with 400, the client retries with this one, so a wrong guess costs a
     request instead of a metric that never arrives.
 
+    Settled on 2026-11-05: the discovery document (revision 20261105) documents
+    the filter patterns in snake_case, exactly as they are written in METRICS
+    below - `daily_heart_rate_variability.date`, `sleep.interval.civil_end_time`,
+    `weight.sample_time.civil_time`. The retry is kept because it costs nothing
+    and the camelCase REST reference page is still published.
+
     Every part of the path is turned, not only the data type prefix: the
     ambiguity is in each proto field name, so `sleep.interval.civil_end_time`
     becomes `sleep.interval.civilEndTime`. Turning the prefix alone left sleep
@@ -133,11 +148,14 @@ def other_spelling(filter_field: str) -> str | None:
 
 
 def extract_sleep(point: dict) -> list[Reading]:
-    # TO VERIFY WITH REAL DATA: union key "sleep", "summary.minutesAsleep"
-    # (int64 as string), "metadata.nap", "interval.civilEndTime.date" and the
+    # Names checked against the spec (revision 20261105): union key "sleep",
+    # "summary.minutesAsleep" (int64 as string), "metadata.nap",
+    # "interval.civilEndTime.date" (SessionTimeInterval, output only) and the
     # fallback "interval.endTime" + "interval.endUtcOffset".
-    # The Google Health API has no sleep score field (checked 2026-10-22), so
-    # intervals.icu "sleepScore" is not written.
+    # TO VERIFY WITH REAL DATA: that excluding metadata.nap is enough to leave
+    # one row a night (the spec also has "mainSleep", unused here).
+    # The Google Health API has no sleep score field (spec re-read 2026-11-05),
+    # so intervals.icu "sleepScore" is not written.
     sleep = point.get("sleep") or {}
     if (sleep.get("metadata") or {}).get("nap"):
         return []  # naps would inflate the nightly total
@@ -169,8 +187,9 @@ def _daily(key: str, value_keys: tuple[str, ...], field: str, convert: Callable[
 
 
 def extract_weight(point: dict) -> list[Reading]:
-    # TO VERIFY WITH REAL DATA: union key "weight", "weightGrams",
-    # "sampleTime.civilTime.date" (output only) and "sampleTime.physicalTime"/"utcOffset".
+    # Names checked against the spec (revision 20261105): union key "weight",
+    # "weightGrams" (double), "sampleTime.civilTime.date" (output only) and
+    # "sampleTime.physicalTime" / "sampleTime.utcOffset".
     weight = point.get("weight") or {}
     grams = _number(weight.get("weightGrams"))
     sample = weight.get("sampleTime") or {}
@@ -183,9 +202,10 @@ def extract_weight(point: dict) -> list[Reading]:
 
 
 def extract_steps(point: dict) -> list[Reading]:
-    # TO VERIFY WITH REAL DATA: dailyRollUp item with "civilStartTime.date"
-    # and "steps.countSum" (int64 as string). A sum of 0 usually means "no data"
-    # (watch not worn), so it is skipped instead of overwriting intervals.icu.
+    # Names checked against the spec (revision 20261105): DailyRollupDataPoint
+    # with "civilStartTime.date" and "steps.countSum" (int64 as string).
+    # TO VERIFY WITH REAL DATA: that a sum of 0 means "no data" (watch not worn)
+    # and not a real zero. It is skipped, so intervals.icu is not overwritten.
     day = _date((point.get("civilStartTime") or {}).get("date"))
     count = _number((point.get("steps") or {}).get("countSum"))
     if day is None or not count:
@@ -201,6 +221,7 @@ METRICS: tuple[Metric, ...] = (
         data_type="sleep",
         # TO VERIFY WITH REAL DATA: "reconcile" is the documented way to merge
         # overlapping sleep logs from several devices; "list" would also work.
+        # The spec confirms reconcile takes the same filters as list.
         method="reconcile",
         filter_field="sleep.interval.civil_end_time",
         page_size=25,  # the API caps sleep pages at 25
@@ -220,7 +241,7 @@ METRICS: tuple[Metric, ...] = (
         page_size=1000,
         scope=METRICS_SCOPE,
         combine="last",
-        # TO VERIFY WITH REAL DATA: "beatsPerMinute" (int64 as string).
+        # Name checked against the spec (revision 20261105): "beatsPerMinute".
         extract=_daily("dailyRestingHeartRate", ("beatsPerMinute",), "restingHR", lambda v: int(round(v))),
     ),
     Metric(
@@ -231,9 +252,11 @@ METRICS: tuple[Metric, ...] = (
         page_size=1000,
         scope=METRICS_SCOPE,
         combine="last",
-        # TO VERIFY WITH REAL DATA: intervals.icu "hrv" is rMSSD in ms. We
+        # Both field names are in the spec (revision 20261105).
+        # TO VERIFY WITH REAL DATA: intervals.icu "hrv" is rMSSD in ms, and we
         # assume "averageHeartRateVariabilityMilliseconds" is the nightly rMSSD
         # shown in the Fitbit app; the deep-sleep rMSSD is only a fallback.
+        # The spec gives no unit for it, so this one stays an assumption.
         extract=_daily(
             "dailyHeartRateVariability",
             ("averageHeartRateVariabilityMilliseconds", "deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds"),
@@ -259,7 +282,7 @@ METRICS: tuple[Metric, ...] = (
         page_size=1000,
         scope=METRICS_SCOPE,
         combine="last",
-        # TO VERIFY WITH REAL DATA: "averagePercentage".
+        # Name checked against the spec (revision 20261105): "averagePercentage".
         extract=_daily("dailyOxygenSaturation", ("averagePercentage",), "spO2", lambda v: round(v, 1)),
     ),
     Metric(
@@ -280,7 +303,8 @@ METRICS: tuple[Metric, ...] = (
         page_size=1000,
         scope=ACTIVITY_SCOPE,
         combine="last",
-        # TO VERIFY WITH REAL DATA: union key "dailyVo2Max", value "vo2Max".
+        # Checked against the spec (revision 20261105): union key "dailyVo2Max"
+        # (schema DailyVO2Max), value "vo2Max".
         extract=_daily("dailyVo2Max", ("vo2Max",), "vo2max", lambda v: round(v, 1)),
     ),
     Metric(
@@ -291,7 +315,8 @@ METRICS: tuple[Metric, ...] = (
         page_size=1000,
         scope=METRICS_SCOPE,
         combine="last",
-        # TO VERIFY WITH REAL DATA: union key "dailyRespiratoryRate", value "breathsPerMinute".
+        # Checked against the spec (revision 20261105): union key
+        # "dailyRespiratoryRate", value "breathsPerMinute".
         extract=_daily("dailyRespiratoryRate", ("breathsPerMinute",), "respiration", lambda v: round(v, 1)),
     ),
 )
