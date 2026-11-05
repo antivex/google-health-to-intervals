@@ -410,7 +410,7 @@ uv run ghti sync                          # copy the last 3 days (--days N to ch
 uv run ghti sync --dry-run --show-values  # look without writing
 uv run ghti backfill --from 2025-01-01    # copy older history
 uv run ghti export-csv -o wellness.csv    # last 30 days as CSV (--from/--to)
-uv run ghti status                        # when does the authorization expire?
+uv run ghti status                        # the last run, and when the authorization expires
 uv run ghti schedule                      # the daily task, written out (installs nothing)
 ```
 
@@ -442,6 +442,34 @@ Two things it checks instead of assuming:
 A run copies the last 3 days, so a night the laptop was asleep costs nothing:
 the next run picks the missed days up. Repeating a day is harmless — the same
 values overwrite the same day.
+
+### Did it actually run? `ghti status`
+
+Every real sync writes one line in a small diary next to the token
+(`runs.jsonl` in the configuration folder; `GHTI_JOURNAL_FILE` moves it).
+`ghti status` reads the last line, so you can check a task that runs while you
+are asleep without opening a log:
+
+```
+uv run ghti status
+Last sync: 2026-11-05 06:30 UTC (today), 3 day(s) sent.
+Google authorization from 2026-11-04, expires on 2026-11-11 06:30 UTC (in 144 h).
+```
+
+If the daily task stops firing — a renamed folder, a removed task, a laptop that
+never wakes up — nothing fails loudly: data just stops arriving. So after two
+quiet days `status` says it:
+
+```
+Last sync: 2026-11-01 06:30 UTC (4 days ago), 3 day(s) sent.
+  Nothing has run for 4 days. If it should run on its own, the daily task is
+  not firing: check it, or print it again with `ghti schedule`.
+```
+
+A run that failed is written too, with the message you would have seen, and a
+run with `--dry-run` is not written at all. The diary holds dates, counts,
+metric names and error messages only — never your values and never a secret —
+so you can attach it to a bug report as it is.
 
 ## Development
 

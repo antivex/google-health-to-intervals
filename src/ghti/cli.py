@@ -25,6 +25,7 @@ from ghti.config import REQUIRED, is_configured, load_settings, raw_values, reda
 from ghti.crypto import Keys
 from ghti.errors import AuthRequired, ConfigError, GhtiError
 from ghti.examples import readings as example_readings
+from ghti import journal
 from ghti.github import (
     SETUP_ANCHOR,
     UPSTREAM,
@@ -96,6 +97,23 @@ def _report(report: SyncReport, show_values: bool) -> int:
     return 0
 
 
+def _run_and_record(command: str, settings, start: date, end: date, dry_run: bool) -> SyncReport:
+    """Run a sync and write one diary line, so `ghti status` can report it later.
+
+    A failure is written too: without it a scheduled run that stops working
+    leaves no trace the user can read the next morning.
+    """
+    try:
+        with _http() as http:
+            report = run_sync(settings, start, end, http, dry_run=dry_run)
+    except GhtiError as error:
+        if not dry_run:
+            journal.append(journal.failure(str(error), command=command, start=start, end=end))
+        raise
+    if not dry_run:
+        journal.append(journal.from_report(report, command=command))
+    return report
+
 # --- commands ------------------------------------------------------------------
 
 
@@ -117,8 +135,7 @@ def cmd_sync(args) -> int:
     settings = load_settings()
     end = settings.today()
     start = end - timedelta(days=args.days - 1)
-    with _http() as http:
-        report = run_sync(settings, start, end, http, dry_run=args.dry_run)
+    report = _run_and_record("sync", settings, start, end, args.dry_run)
     return _report(report, args.show_values)
 
 
@@ -129,8 +146,7 @@ def cmd_backfill(args) -> int:
         raise ConfigError(f"--from ({args.start}) is after --to ({end}).")
     if (end - args.start).days >= MAX_DAYS:
         raise ConfigError(f"The range is longer than {MAX_DAYS} days.")
-    with _http() as http:
-        report = run_sync(settings, args.start, end, http, dry_run=args.dry_run)
+    report = _run_and_record("backfill", settings, args.start, end, args.dry_run)
     return _report(report, args.show_values)
 
 
@@ -238,6 +254,9 @@ def cmd_schedule(args) -> int:
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
+    if not in_actions():
+        # On GitHub the runner is new every time, so the diary is always empty there.
+        print(journal.summary(journal.last()))
     settings = load_settings()
     token = TokenStore(settings.token_file, _keys(settings)).load()
     remaining = token.remaining()
@@ -362,7 +381,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log", help="log file (default: one inside the ghti config folder)")
     p.set_defaults(func=cmd_schedule)
 
-    p = sub.add_parser("status", help="show when the Google authorization expires")
+    p = sub.add_parser("status", help="show the last run and when the Google authorization expires")
     p.add_argument("--remind-hours", type=float, default=36, help="remind when fewer hours are left (default 36)")
     p.add_argument("--fail-on-reminder", action="store_true", help="exit with code 1 when reminding")
     p.add_argument("--skip-if-unconfigured", action="store_true", help=argparse.SUPPRESS)

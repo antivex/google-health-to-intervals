@@ -123,6 +123,35 @@ di tutto il resto.
 Ogni giro copia gli ultimi 3 giorni: una notte col portatile spento non costa
 niente, il giro dopo recupera.
 
+### Ma è andato davvero? `ghti status`
+
+Ogni sincronizzazione vera scrive una riga in un diario accanto al token
+(`runs.jsonl` nella cartella di configurazione; `GHTI_JOURNAL_FILE` lo sposta).
+`ghti status` legge l'ultima riga, così controlli un'operazione che gira mentre
+dormi senza aprire nessun registro:
+
+```
+uv run ghti status
+Last sync: 2026-11-05 06:30 UTC (today), 3 day(s) sent.
+Google authorization from 2026-11-04, expires on 2026-11-11 06:30 UTC (in 144 h).
+```
+
+Se l'operazione pianificata smette di partire — una cartella rinominata,
+l'operazione cancellata, il portatile che non si sveglia — non si rompe niente
+con un errore: i dati smettono solo di arrivare. Per questo dopo due giorni di
+silenzio `status` lo dice:
+
+```
+Last sync: 2026-11-01 06:30 UTC (4 days ago), 3 day(s) sent.
+  Nothing has run for 4 days. If it should run on its own, the daily task is
+  not firing: check it, or print it again with `ghti schedule`.
+```
+
+Viene scritto anche un giro fallito, con il messaggio che avresti letto; un giro
+con `--dry-run` non viene scritto. Nel diario ci sono solo date, conteggi, nomi
+delle misure e messaggi d'errore — mai i tuoi valori e mai un segreto — quindi
+puoi allegarlo a una segnalazione così com'è.
+
 ## Ogni settimana
 
 Google fa scadere l'autorizzazione delle app in "Testing" dopo 7 giorni. Il
