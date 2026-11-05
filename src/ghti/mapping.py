@@ -14,6 +14,7 @@ If Google answers differently, fix it here; the rest of the code does not change
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -86,6 +87,32 @@ def _local_day(timestamp: Any, utc_offset: Any) -> date | None:
 def build_filter(field: str, start: date, end_exclusive: date) -> str:
     """Closed-open day range in AIP-160 syntax (the API accepts >= and <)."""
     return f'{field} >= "{start.isoformat()}" AND {field} < "{end_exclusive.isoformat()}"'
+
+
+def other_spelling(filter_field: str) -> str | None:
+    """The same filter path with the data type prefix spelled the other way.
+
+    The two sources disagree and neither could be tried on a real account before
+    the first release: the REST reference writes the prefix in camelCase
+    (`dailyHeartRateVariability.date >= "2024-08-15"`, read 2026-11-05 on
+    https://developers.google.com/health/reference/rest/v4/users.dataTypes.dataPoints/list),
+    the official google-health-cli writes it in snake_case. Whichever one the API
+    refuses with 400, the client retries with this one, so a wrong guess costs a
+    request instead of five empty metrics.
+
+    Returns None when the prefix is a single lowercase word (`sleep`, `weight`,
+    `steps`): there both spellings are the same. Only the prefix changes; the
+    parts after the first dot are snake_case in both sources.
+    """
+    prefix, dot, rest = filter_field.partition(".")
+    if "_" in prefix:
+        head, *tail = prefix.split("_")
+        other = head + "".join(word[:1].upper() + word[1:] for word in tail)
+    elif any(char.isupper() for char in prefix):
+        other = re.sub(r"(?<!^)(?=[A-Z])", "_", prefix).lower()
+    else:
+        return None
+    return other + dot + rest
 
 
 # --- extractors ----------------------------------------------------------------
@@ -171,8 +198,10 @@ METRICS: tuple[Metric, ...] = (
         name="resting heart rate",
         data_type="daily-resting-heart-rate",
         method="list",
-        # TO VERIFY WITH REAL DATA: snake_case filter names, as used by the
-        # official google-health-cli (the docs also show a camelCase example).
+        # The prefix is snake_case here, as in the official google-health-cli;
+        # the REST reference writes it camelCase (read again 2026-11-05). The
+        # client tries the other spelling on a 400, so either one works: see
+        # other_spelling() above.
         filter_field="daily_resting_heart_rate.date",
         page_size=1000,
         scope=METRICS_SCOPE,

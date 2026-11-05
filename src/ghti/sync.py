@@ -35,6 +35,7 @@ class SyncReport:
     ok: set[str] = field(default_factory=set)
     failed: dict[str, str] = field(default_factory=dict)
     skipped: set[str] = field(default_factory=set)
+    notes: list[str] = field(default_factory=list)
     token_updated: bool = False
     dry_run: bool = False
 
@@ -47,6 +48,7 @@ class SyncReport:
             lines.append(f"  {day}: {shown or '(no data)'}")
         lines += [f"  skipped {name}: permission not granted" for name in sorted(self.skipped)]
         lines += [f"  FAILED {name}: {error}" for name, error in sorted(self.failed.items())]
+        lines += [f"  note: {note}" for note in self.notes]
         return "\n".join(lines)
 
     def markdown(self, show_values: bool = False) -> str:
@@ -67,6 +69,8 @@ class SyncReport:
             out += ["", "Not authorized (tick every box at the next authorization): " + ", ".join(sorted(self.skipped))]
         if self.failed:
             out += ["", "### Problems"] + [f"- **{name}**: {error}" for name, error in sorted(self.failed.items())]
+        if self.notes:
+            out += ["", "### Notes"] + [f"- {note}" for note in self.notes]
         return "\n".join(out) + "\n"
 
 
@@ -108,6 +112,7 @@ def collect(
             for reading in metric.extract(point):
                 if start <= reading.day <= end:
                     readings.append((metric, reading))
+    report.notes.extend(note for note in client.notes if note not in report.notes)
     return merge(readings)
 
 

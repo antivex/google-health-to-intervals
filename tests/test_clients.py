@@ -110,3 +110,79 @@ def test_google_retries_then_explains_errors(mock_http):
 def test_network_is_blocked_during_tests():
     with pytest.raises(respx.models.AllMockedAssertionError), httpx.Client() as http:
         http.get("https://example.com/")
+
+
+# --- the two spellings of the filter prefix ----------------------------------
+
+
+def _invalid_filter(field: str) -> httpx.Response:
+    return httpx.Response(
+        400,
+        json={
+            "error": {
+                "code": 400,
+                "status": "INVALID_ARGUMENT",
+                "message": f'Invalid filter: unknown field "{field}".',
+            }
+        },
+    )
+
+
+def test_google_retries_the_filter_with_the_other_spelling(mock_http):
+    """A 400 on the filter is not the end: the same call goes out again with the
+    prefix spelled the other way, and every later metric uses that spelling."""
+    hrv = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/daily-heart-rate-variability/dataPoints").mock(
+        side_effect=[
+            _invalid_filter("daily_heart_rate_variability"),
+            httpx.Response(200, json={"dataPoints": [{"n": 1}]}),
+        ]
+    )
+    spo2 = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/daily-oxygen-saturation/dataPoints").mock(
+        return_value=httpx.Response(200, json={"dataPoints": []})
+    )
+    with httpx.Client() as http:
+        client = GoogleHealthClient(http, "t")
+        points = client.fetch(BY_NAME["HRV"], date(2026, 10, 20), date(2026, 10, 20))
+        client.fetch(BY_NAME["SpO2"], date(2026, 10, 20), date(2026, 10, 20))
+
+    assert points == [{"n": 1}]
+    first, second = (call.request.url.params["filter"] for call in hrv.calls)
+    assert first.startswith('daily_heart_rate_variability.date >= "2026-10-20"')
+    assert second.startswith('dailyHeartRateVariability.date >= "2026-10-20"')
+    # learned once, used for the rest of the run
+    assert spo2.calls[0].request.url.params["filter"].startswith('dailyOxygenSaturation.date >= "2026-10-20"')
+    assert client.filter_respelled is True
+    assert "dailyHeartRateVariability.date" in client.notes[0]
+
+
+def test_google_does_not_hide_a_400_that_is_not_about_the_filter(mock_http):
+    mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/daily-vo2-max/dataPoints").mock(
+        return_value=httpx.Response(
+            400, json={"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "pageSize too large."}}
+        )
+    )
+    with pytest.raises(GoogleHealthError, match="pageSize too large"), httpx.Client() as http:
+        client = GoogleHealthClient(http, "t")
+        client.fetch(BY_NAME["VO2max"], date(2026, 10, 20), date(2026, 10, 20))
+    assert client.filter_respelled is False and client.notes == []
+
+
+def test_google_gives_up_after_one_retry(mock_http):
+    """Both spellings refused: the user sees the second error, not an endless loop."""
+    route = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/daily-respiratory-rate/dataPoints").mock(
+        side_effect=[_invalid_filter("daily_respiratory_rate"), _invalid_filter("dailyRespiratoryRate")]
+    )
+    with pytest.raises(GoogleHealthError, match="dailyRespiratoryRate"), httpx.Client() as http:
+        GoogleHealthClient(http, "t").fetch(BY_NAME["respiratory rate"], date(2026, 10, 20), date(2026, 10, 20))
+    assert len(route.calls) == 2
+
+
+def test_sleep_and_weight_have_one_spelling_only(mock_http):
+    """Their prefix is one lowercase word: there is nothing to retry, so a 400
+    comes straight back instead of costing a second request."""
+    route = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/sleep/dataPoints:reconcile").mock(
+        return_value=_invalid_filter("sleep")
+    )
+    with pytest.raises(GoogleHealthError, match="unknown field"), httpx.Client() as http:
+        GoogleHealthClient(http, "t").fetch(BY_NAME["sleep"], date(2026, 10, 20), date(2026, 10, 20))
+    assert len(route.calls) == 1

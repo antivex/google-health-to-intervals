@@ -100,3 +100,30 @@ def test_filter_syntax():
     assert build_filter("weight.sample_time.civil_time", date(2026, 10, 1), date(2026, 10, 3)) == (
         'weight.sample_time.civil_time >= "2026-10-01" AND weight.sample_time.civil_time < "2026-10-03"'
     )
+
+
+def test_other_spelling_swaps_only_the_data_type_prefix():
+    from ghti.mapping import other_spelling
+
+    assert other_spelling("daily_heart_rate_variability.date") == "dailyHeartRateVariability.date"
+    assert other_spelling("dailyHeartRateVariability.date") == "daily_heart_rate_variability.date"
+    assert other_spelling("daily_vo2_max.date") == "dailyVo2Max.date"
+    assert other_spelling("dailyVo2Max.date") == "daily_vo2_max.date"
+    # the parts after the first dot stay snake_case in both sources
+    assert other_spelling("weight.sample_time.civil_time") is None
+    assert other_spelling("sleep.interval.civil_end_time") is None
+
+
+def test_every_metric_filter_can_be_written_both_ways_or_neither():
+    """A daily-* metric must have a second spelling to fall back on; the
+    single-word ones must have none, or we would waste a request."""
+    from ghti.mapping import METRICS, other_spelling
+
+    for metric in METRICS:
+        if metric.filter_field is None:
+            continue
+        prefix = metric.filter_field.split(".")[0]
+        other = other_spelling(metric.filter_field)
+        assert (other is not None) == ("_" in prefix), metric.name
+        if other is not None:
+            assert other_spelling(other) == metric.filter_field, metric.name

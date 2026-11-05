@@ -16,7 +16,7 @@ from datetime import date, timedelta
 import httpx
 
 from ghti.errors import GoogleHealthError
-from ghti.mapping import Metric, build_filter
+from ghti.mapping import Metric, build_filter, other_spelling
 
 BASE_URL = "https://health.googleapis.com/v4/users/me/dataTypes"
 RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -37,6 +37,11 @@ class GoogleHealthClient:
         self.max_retries = max_retries
         self.sleep = sleep
         self.requests = 0
+        # Set once, when a 400 shows the other spelling of the filter prefix is
+        # the right one (see mapping.other_spelling). From then on every metric
+        # uses it, because the spelling is a rule of the API, not of one metric.
+        self.filter_respelled = False
+        self.notes: list[str] = []
 
     def _call(self, method: str, url: str, **kwargs) -> dict:
         for attempt in range(self.max_retries + 1):
@@ -55,10 +60,30 @@ class GoogleHealthClient:
         """All data points of `metric` for the days start..end (inclusive)."""
         if metric.method == "dailyRollUp":
             return self._daily_rollup(metric, start, end)
+        field = self._filter_field(metric)
+        try:
+            return self._list(metric, field, start, end)
+        except GoogleHealthError as error:
+            other = other_spelling(field)
+            if other is None or self.filter_respelled or not _looks_like_filter_error(error):
+                raise
+            points = self._list(metric, other, start, end)  # if this fails too, its own error is the one shown
+            self.filter_respelled = True
+            self.notes.append(
+                f'Google wanted the day filter written "{other}", not "{field}": '
+                "used for the rest of this run, one extra request. Nothing for you to do."
+            )
+            return points
+
+    def _filter_field(self, metric: Metric) -> str:
+        field = metric.filter_field or ""  # None only for dailyRollUp, which does not come here
+        return (other_spelling(field) or field) if self.filter_respelled else field
+
+    def _list(self, metric: Metric, field: str, start: date, end: date) -> list[dict]:
         suffix = ":reconcile" if metric.method == "reconcile" else ""
         url = f"{BASE_URL}/{metric.data_type}/dataPoints{suffix}"
         params = {
-            "filter": build_filter(metric.filter_field, start, end + timedelta(days=1)),
+            "filter": build_filter(field, start, end + timedelta(days=1)),
             "pageSize": metric.page_size,
         }
         points: list[dict] = []
@@ -106,6 +131,16 @@ def _number(value: str | None) -> float | None:
         return float(value) if value is not None else None
     except ValueError:
         return None
+
+
+def _looks_like_filter_error(error: GoogleHealthError) -> bool:
+    """True when a 400 blames the filter, so retrying with the other spelling
+    of the prefix can help. Any other 400 (a real bug in our request) is left
+    alone, so a wrong guess is never hidden behind a second request."""
+    if error.status != 400:
+        return False
+    message = str(error).lower()
+    return "filter" in message or "invalid_argument" in message or "field" in message
 
 
 def _error(response: httpx.Response) -> GoogleHealthError:
