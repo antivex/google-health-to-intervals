@@ -91,7 +91,7 @@ def test_partial_permissions_are_reported(settings, mock_http, capsys):
     from conftest import NOW, keys
     from ghti.oauth import SCOPES, StoredToken, TokenStore
 
-    token = StoredToken("1//r", NOW, NOW + timedelta(days=7), [SCOPES[0]])
+    token = StoredToken("1//r", NOW, NOW + timedelta(days=7), [SCOPES[0]], expiry_known=True)
     TokenStore(settings.token_file, keys()).save(token)
     mock_refresh(mock_http)
     mock_intervals(mock_http)

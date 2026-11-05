@@ -79,9 +79,12 @@ def keys() -> Keys:
     return Keys(CLIENT_SECRET, API_KEY)
 
 
-def store_token(settings, age: timedelta = timedelta(days=1)) -> Path:
+def store_token(settings, age: timedelta = timedelta(days=1), expiry_known: bool = True) -> Path:
+    """A stored authorization. expiry_known=True is the normal case: a project in
+    "Testing" mode, where Google sends refresh_token_expires_in. With False the date
+    is only our guess and no command may treat it as a fact."""
     obtained = NOW - age
-    token = StoredToken(REFRESH_TOKEN, obtained, obtained + timedelta(days=7), [])
+    token = StoredToken(REFRESH_TOKEN, obtained, obtained + timedelta(days=7), [], expiry_known=expiry_known)
     TokenStore(settings.token_file, keys()).save(token)
     return settings.token_file
 

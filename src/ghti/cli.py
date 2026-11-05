@@ -21,7 +21,7 @@ from ghti.check import exit_code as check_exit_code
 from ghti.check import markdown as check_markdown
 from ghti.check import run_checks
 from ghti.check import text as check_text
-from ghti.config import REQUIRED, is_configured, load_settings, raw_values, redact
+from ghti.config import REQUIRED, is_configured, load_settings, raw_values, redact, utcnow
 from ghti.crypto import Keys
 from ghti.errors import AuthRequired, ConfigError, GhtiError
 from ghti.examples import readings as example_readings
@@ -37,7 +37,16 @@ from ghti.github import (
     warning,
     write_summary,
 )
-from ghti.oauth import REDIRECT_URI, TokenStore, build_auth_url, exchange_code, parse_redirect_url
+from ghti.oauth import (
+    DEFAULT_REFRESH_LIFETIME,
+    REDIRECT_URI,
+    StoredToken,
+    TokenStore,
+    build_auth_url,
+    exchange_code,
+    parse_redirect_url,
+    refresh_access_token,
+)
 from ghti.schedule import DEFAULT_AT, DEFAULT_DAYS, PLATFORMS
 from ghti.schedule import build as build_schedule
 from ghti.schedule import other_platforms
@@ -251,6 +260,33 @@ def cmd_schedule(args) -> int:
     return 0
 
 
+def _ask_google_if_alive(settings, token: StoredToken) -> StoredToken:
+    """The stored date has passed, but Google never said the token expires.
+
+    Google only sends `refresh_token_expires_in` when there is an expiry (a project
+    whose publishing status is "Testing"); without it our date is a guess, so a run
+    must not stop on it. Ask Google instead: if the refresh works, the authorization
+    is alive and the guess moves on. refresh_access_token raises AuthRequired when
+    Google really refuses it, with the usual "authorize again" message.
+    """
+    with httpx.Client(timeout=30) as http:
+        _access, new_refresh = refresh_access_token(settings, token, http)
+    alive = StoredToken(
+        refresh_token=new_refresh or token.refresh_token,
+        obtained_at=token.obtained_at,
+        expires_at=utcnow() + DEFAULT_REFRESH_LIFETIME,
+        scopes=token.scopes,
+        expiry_known=False,
+    )
+    TokenStore(settings.token_file, _keys(settings)).save(alive)
+    print(
+        "Google never gave an expiry date for this authorization, and the 7-day guess "
+        "has run out: asked Google just now and the authorization still works. "
+        "Checking again in 7 days; nothing for you to do."
+    )
+    return alive
+
+
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
@@ -260,20 +296,29 @@ def cmd_status(args) -> int:
     settings = load_settings()
     token = TokenStore(settings.token_file, _keys(settings)).load()
     remaining = token.remaining()
+    if remaining <= timedelta(0) and not token.expiry_known:
+        token = _ask_google_if_alive(settings, token)
+        remaining = token.remaining()
     expires = token.expires_at.strftime("%Y-%m-%d %H:%M UTC")
     if remaining <= timedelta(0):
         raise AuthRequired(f"The Google authorization expired on {expires}.")
     hours = int(remaining.total_seconds() // 3600)
-    print(f"Google authorization from {token.obtained_at:%Y-%m-%d}, expires on {expires} (in {hours} h).")
+    word = "expires" if token.expiry_known else "should expire"
+    print(f"Google authorization from {token.obtained_at:%Y-%m-%d}, {word} on {expires} (in {hours} h).")
     if remaining <= timedelta(hours=args.remind_hours):
         when = "today" if hours < 12 else "tomorrow"
+        guess = "" if token.expiry_known else (
+            " (Google did not give a date for this one, so this is the 7-day guess of a"
+            ' project in "Testing" mode: if yours no longer expires, the sync keeps going'
+            " by itself and this reminder stops being needed.)"
+        )
         _show_auth(
             settings,
-            f"Reminder: the Google authorization expires {when}",
-            f"It expires on {expires} (in about {hours} hours). Renew it now and the sync will not stop.",
+            f"Reminder: the Google authorization {'expires' if token.expiry_known else 'may expire'} {when}",
+            f"It {word} on {expires} (in about {hours} hours). Renew it now and the sync will not stop." + guess,
         )
         return 1 if args.fail_on_reminder else 0
-    write_summary(f"## Google authorization OK\n\nIt expires on {expires} (in {hours} hours).")
+    write_summary(f"## Google authorization OK\n\nIt {word} on {expires} (in {hours} hours).")
     return 0
 
 

@@ -117,13 +117,22 @@ def _google(settings: Settings, http: httpx.Client) -> list[Step]:
         Step(
             OK,
             "Google authorization",
-            f"Google accepted it. It expires on {expires} (in {hours} h)."
+            f"Google accepted it. It {'expires' if token.expiry_known else 'should expire'} on {expires} (in {hours} h)."
             + (" The stored token was refreshed and saved." if updated else ""),
         )
     ]
-    if hours <= 36:
+    if hours <= 36 and token.expiry_known:
         steps.append(
             Step(NOTE, "Renewal", f"Fewer than 36 hours left ({hours} h). Renew now: `ghti auth-url`.")
+        )
+    elif hours <= 36:
+        steps.append(
+            Step(
+                NOTE,
+                "Renewal",
+                f"The stored date says {hours} h, but Google never gave one: it is our 7-day guess. "
+                "`ghti status` asks Google before asking you for anything.",
+            )
         )
     return steps + _scopes(token)
 

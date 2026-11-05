@@ -63,8 +63,11 @@ Google Health API  --->  your private GitHub repository (GitHub Actions)  --->  
 - You create your **own** Google Cloud project, in "Testing" mode. Google does
   not need to review it because only you use it.
 - The price of "Testing" mode: **Google asks you to approve access again every
-  7 days.** This tool turns that into a one-minute step, and GitHub emails you
-  the day before it is needed.
+  7 days.** That comes from the publishing status, not from the app being
+  unverified ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2):
+  a consent screen with an external user type and a publishing status of
+  *Testing* gets "a refresh token expiring in 7 days"). This tool turns the
+  renewal into a one-minute step, and GitHub emails you the day before.
 - Your data goes straight from Google to intervals.icu. There is no server of ours.
 
 ## See what it writes, before setting anything up (10 seconds)
@@ -241,6 +244,11 @@ Google expires the authorization of "Testing" apps 7 days after you approve it.
 - If you miss it, **Sync** fails with a clear message and the same link, and
   GitHub emails you again. Nothing is lost: after you re-authorize, the missed
   days (up to 14 by default) are copied automatically.
+- The expiry date comes from Google (field `refresh_token_expires_in`). When a
+  token arrives **without** a date, the 7 days are only this tool's guess: once
+  the guess runs out, **Reminder** asks Google directly and, if the authorization
+  still works, it says so and goes quiet for another 7 days. A guess never turns
+  into a red run that asks you to re-authorize for nothing.
 
 Don't want the red reminder run? Add the repository variable
 `GHTI_REMINDER_EMAIL` = `false`. The reminder then only appears in the run Summary.
@@ -261,8 +269,13 @@ Don't want the red reminder run? Add the repository variable
 
 ## Limits
 
-- **Re-authorization every 7 days**, because the Google project is in "Testing"
-  mode. This is Google's rule for apps that have not gone through verification.
+- **Re-authorization every 7 days**, because the Google project's publishing
+  status is "Testing": Google then issues a refresh token that expires in 7 days
+  ([source](https://developers.google.com/identity/protocols/oauth2)). Google
+  says so in the token response, and that is the date `ghti status` shows. If
+  Google ever stops sending a date, the tool treats its own 7 days as a **guess**:
+  it asks Google whether the authorization still works before stopping a sync or
+  asking you to click anything.
 - A "Testing" project accepts at most **100 test users**. That is why every user
   creates their own project.
 - It depends on the **Google Health API**: if Google changes the API or its

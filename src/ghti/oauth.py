@@ -7,7 +7,17 @@ Flow (no server needed, works on GitHub Actions too):
 3. `auth-finish <address>` exchanges the code for a refresh token and stores it
    encrypted. Google's old copy/paste "OOB" flow is not used (it was shut down).
 
-In Testing mode Google expires the refresh token 7 days after consent.
+In Testing mode Google expires the refresh token 7 days after consent, and says so
+in the token response field `refresh_token_expires_in`. When Google does NOT send
+that field we do not know of any expiry: the date we store is then a guess
+(DEFAULT_REFRESH_LIFETIME) and `expiry_known` is False, so no command may treat it
+as a fact. Only Google refusing the refresh token proves it is gone.
+
+Source (read 2026-11-05): https://developers.google.com/identity/protocols/oauth2
+"a Google Cloud Platform project with an OAuth consent screen configured for an
+external user type and a publishing status of Testing is issued a refresh token
+expiring in 7 days". The 7 days come from the *Testing* publishing status, not
+from the app being unverified.
 """
 
 from __future__ import annotations
@@ -45,6 +55,9 @@ class StoredToken:
     obtained_at: datetime
     expires_at: datetime
     scopes: list[str] = field(default_factory=list)
+    # True only when Google itself said when the refresh token expires.
+    # False means expires_at is our own guess: see the module docstring.
+    expiry_known: bool = False
 
     def to_json(self) -> bytes:
         return json.dumps(
@@ -53,6 +66,7 @@ class StoredToken:
                 "obtained_at": self.obtained_at.isoformat(),
                 "expires_at": self.expires_at.isoformat(),
                 "scopes": self.scopes,
+                "expiry_known": self.expiry_known,
             },
             sort_keys=True,
         ).encode("utf-8")
@@ -65,6 +79,8 @@ class StoredToken:
             obtained_at=datetime.fromisoformat(data["obtained_at"]),
             expires_at=datetime.fromisoformat(data["expires_at"]),
             scopes=list(data.get("scopes", [])),
+            # Token files written before this field existed: treat the date as a guess.
+            expiry_known=bool(data.get("expiry_known", False)),
         )
 
     def remaining(self, now: datetime | None = None) -> timedelta:
@@ -207,7 +223,7 @@ def exchange_code(
     expires_at = now + (timedelta(seconds=int(lifetime)) if lifetime else DEFAULT_REFRESH_LIFETIME)
     granted = str(data.get("scope", "")).split()
     missing = [s for s in SCOPES if granted and s not in granted]
-    token = StoredToken(refresh_token, now, expires_at, granted or list(SCOPES))
+    token = StoredToken(refresh_token, now, expires_at, granted or list(SCOPES), expiry_known=bool(lifetime))
     return token, missing
 
 

@@ -154,7 +154,12 @@ puoi allegarlo a una segnalazione così com'è.
 
 ## Ogni settimana
 
-Google fa scadere l'autorizzazione delle app in "Testing" dopo 7 giorni. Il
+Google fa scadere l'autorizzazione dopo 7 giorni quando lo stato di pubblicazione
+del progetto e' "Testing" (e' la regola di quello stato, non della verifica
+dell'app: [documentazione Google](https://developers.google.com/identity/protocols/oauth2)).
+La data la dice Google; se un giorno non la dicesse, i 7 giorni sono solo una
+stima nostra e lo strumento chiede a Google se l'autorizzazione vale ancora prima
+di fermare una sincronizzazione o di chiederti un clic. Il
 sesto giorno il workflow **Reminder** diventa rosso apposta e GitHub ti manda
 un'email con il link: ripeti il punto 7 (un minuto). Se lo salti, la sync si
 ferma ma i giorni persi vengono recuperati dopo la nuova autorizzazione.

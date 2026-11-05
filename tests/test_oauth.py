@@ -102,3 +102,18 @@ def test_refresh_ok(settings, mock_http):
     token = StoredToken(REFRESH_TOKEN, NOW, NOW + timedelta(days=7), [])
     with httpx.Client() as http:
         assert refresh_access_token(settings, token, http) == ("ya29.test-access", None)
+
+
+def test_exchange_code_records_whether_google_gave_an_expiry(settings, mock_http):
+    """Google sends refresh_token_expires_in only when the refresh token expires."""
+    for lifetime, expected_known in ((604800, True), (None, False)):
+        body = {"refresh_token": "1//r", "scope": " ".join(SCOPES), "access_token": "ya29.x"}
+        if lifetime is not None:
+            body["refresh_token_expires_in"] = lifetime
+        mock_http.post(TOKEN_ENDPOINT).mock(return_value=httpx.Response(200, json=body))
+        k = keys()
+        state = link_params(build_auth_url(settings, k))["state"]
+        with httpx.Client() as http:
+            token, _missing = exchange_code(settings, k, f"{REDIRECT_URI}?state={state}&code=4/abc", http)
+        assert token.expiry_known is expected_known
+        assert (token.expires_at - NOW).days in (6, 7)

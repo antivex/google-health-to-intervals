@@ -196,3 +196,51 @@ def test_readme_error_list_covers_the_real_messages():
         f"{name}:{line} -> {keys[0]!r}" for name, line, keys in messages if not any(key in section for key in keys)
     ]
     assert not missing, "messages with no line in the README error list: " + "; ".join(missing)
+
+
+# --- an expiry date Google never gave ------------------------------------------
+# The 7 days come from the "Testing" publishing status, and Google says so in
+# refresh_token_expires_in. Without that field our date is a guess: a guess must
+# never stop a working sync, and must never ask the owner to click for nothing.
+
+
+def test_status_asks_google_instead_of_stopping_on_a_guessed_expiry(settings, mock_http, capsys):
+    from conftest import mock_refresh
+    from ghti.oauth import TokenStore
+    from ghti.crypto import Keys
+    from conftest import CLIENT_SECRET, API_KEY
+
+    store_token(settings, age=timedelta(days=9), expiry_known=False)
+    mock_refresh(mock_http)
+
+    assert main(["status"]) == 0
+    out = capsys.readouterr().out
+    assert "the authorization still works" in out
+    # the guess moved on, and stays a guess
+    token = TokenStore(settings.token_file, Keys(CLIENT_SECRET, API_KEY)).load()
+    assert token.remaining() > timedelta(days=6)
+    assert token.expiry_known is False
+
+
+def test_status_still_asks_to_authorize_when_google_refuses_the_guessed_token(settings, mock_http, capsys):
+    from conftest import mock_refresh
+
+    store_token(settings, age=timedelta(days=9), expiry_known=False)
+    mock_refresh(mock_http, status=400, body={"error": "invalid_grant", "error_description": "Token expired"})
+
+    assert main(["status"]) == 3  # 3 = authorization needed, as before
+    assert "expired or was revoked" in capsys.readouterr().out
+
+
+def test_a_guessed_date_is_not_told_as_a_fact(settings, github, capsys):
+    store_token(settings, age=timedelta(days=2), expiry_known=False)
+    assert main(["status", "--fail-on-reminder"]) == 0
+    assert "should expire on 2026-10-27" in capsys.readouterr().out
+
+
+def test_the_day_six_reminder_says_when_the_date_is_only_a_guess(settings, github, capsys):
+    store_token(settings, age=timedelta(days=6), expiry_known=False)
+    assert main(["status", "--fail-on-reminder"]) == 1
+    summary = github.read_text(encoding="utf-8")
+    assert "may expire tomorrow" in summary
+    assert "Google did not give a date for this one" in summary
