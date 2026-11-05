@@ -87,7 +87,8 @@ C'è anche una guida PDF a pagamento (in inglese),
 [Keep Your Fitbit Data After the Google Health Switch](https://antivex.gumroad.com/l/fitbit-google-health-intervals),
 per chi non sa quale strada scegliere: mette a confronto passo per passo Health
 Connect, Health Sync, Apple Health, il caricamento CSV, l'API di intervals.icu e
-questo ponte, spiega come recuperare i giorni persi dal 2 novembre ed elenca i
-messaggi d'errore del ponte con la soluzione. Non serve per usare il ponte.
+questo ponte e spiega come recuperare i giorni persi dal 2 novembre. Non serve
+per usare il ponte: i messaggi d'errore del ponte, con la soluzione, sono gratis
+nella [lista in inglese](README.md#error-messages-one-by-one).
 
 Licenza MIT. Non siamo collegati a Google, Fitbit o intervals.icu.

@@ -10,6 +10,7 @@ from ghti.oauth import REDIRECT_URI
 
 UPSTREAM = "https://github.com/antivex/google-health-to-intervals"
 GUIDE_URL = "https://antivex.gumroad.com/l/fitbit-google-health-intervals"
+ERRORS_ANCHOR = "#error-messages-one-by-one"
 
 
 def in_actions() -> bool:
@@ -29,20 +30,23 @@ def help_footer() -> str:
     lines = [
         "### Stuck on this error?",
         "",
-        f"1. The [FAQ]({UPSTREAM}#faq) covers the most frequent ones: missing values, the browser",
-        "   error during authorization, secrets changed after the last authorization.",
-        f"2. If it is not there, [open an issue]({UPSTREAM}/issues/new) with the text above. It is",
+        f"1. [Error messages, one by one]({UPSTREAM}{ERRORS_ANCHOR}): every message this bridge can",
+        "   print, with the fix. Look for the first line of the error above.",
+        f"2. If yours is not there, [open an issue]({UPSTREAM}/issues/new) with the text above. It is",
         "   free, the error text carries no health data, and the fix then helps everybody.",
-        f"3. The [paid guide]({GUIDE_URL}) (mine, optional) lists this bridge's error messages one",
-        "   by one with the fix, and compares the other routes in case this one is not the right",
-        "   tool for you.",
+        f"3. The [paid guide]({GUIDE_URL}) (mine, optional) answers a different question: which route",
+        "   fits you (Health Connect, Health Sync, Apple Health, CSV, the intervals.icu API or this",
+        "   bridge) and how to fill the gap since 2 November. You do not need it to fix this error.",
     ]
     return "\n".join(lines) + "\n"
 
 
 def help_line() -> str:
     """The same pointer in one line, for a terminal."""
-    return f"FAQ: {UPSTREAM}#faq - still stuck? Open an issue: {UPSTREAM}/issues/new"
+    return (
+        f"Error messages with the fix: {UPSTREAM}{ERRORS_ANCHOR}"
+        f" - not there? Open an issue: {UPSTREAM}/issues/new"
+    )
 
 
 def warning(message: str) -> None:

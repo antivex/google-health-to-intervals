@@ -254,6 +254,70 @@ If the Summary shows a "Problems" section, please open an issue with that text
 **Can I make my copy public?**
 Please don't. The token is encrypted, but a private repository is the safe choice.
 
+## Error messages, one by one
+
+Every message the bridge can print, with the fix. Copy the first line of the
+error and look for it here. If yours is not in this list, please
+[open an issue](https://github.com/antivex/google-health-to-intervals/issues/new)
+with the text: the error text carries no health data, and the fix then helps
+everybody.
+
+### Setup
+
+| Message | What to do |
+|---|---|
+| `Missing setting(s): ...` | Add the four secrets on GitHub under *Settings > Secrets and variables > Actions*. The names are case sensitive: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`. On a computer they go in environment variables or in `config.env`. |
+| `GHTI_TIMEZONE=... is not a valid time zone` | Use a time zone name, not an offset: `Europe/Rome`, `America/New_York`. |
+
+### Authorization, the first time
+
+| Message | What to do |
+|---|---|
+| `That does not look like the address from the browser` | Copy the **whole** address bar after you click Allow, starting with `http://127.0.0.1:8765/?state=`, and keep it in quotes. The browser page showing an error is normal (see the FAQ above). |
+| `Unexpected address host '...': expected 127.0.0.1` | You pasted a different link (often the consent link instead of the one you were sent back to). Use the address you landed on after allowing. |
+| `The address has no 'code' or 'state'` | The address was cut. Copy it again from the address bar, not from the page text. |
+| `Google returned 'access_denied': access was not granted` | Run `auth-url` again and click *Continue* / *Allow*, ticking **every** box. |
+| `This address belongs to a link created with different secrets` | You changed `GOOGLE_CLIENT_SECRET` or `INTERVALS_API_KEY` after creating the link. Create a new link with `auth-url`. |
+| `Google refused the code (invalid_grant: ...)` | The code in the address works once and only for a few minutes. Create a new link with `auth-url` and finish straight away. |
+| `Google did not return a refresh token` | Google only sends it the first time. Remove the app at [myaccount.google.com/permissions](https://myaccount.google.com/permissions), then authorize again. |
+| `Google rejected the OAuth client (invalid_client)` | Check `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` against the client in Google Cloud, and that the client type is *Desktop app*. |
+
+### The weekly re-authorization
+
+| Message | What to do |
+|---|---|
+| `No Google authorization found (...)` | Nobody has authorized yet, or `state/token.enc` was deleted. Run *Actions > Re-authorize* (or `auth-url` plus `auth-finish`). |
+| `Cannot decrypt ...: GOOGLE_CLIENT_SECRET or INTERVALS_API_KEY changed since the last authorization` | The token is encrypted with those two secrets. After changing either one, authorize again. |
+| `The Google authorization expired on ...` or `has expired or was revoked` | Normal: a project in *Testing* mode expires every 7 days. Authorize again. `ghti status` says when it expires. |
+| `not a ghti token file` or `wrong key or damaged file` | Delete `state/token.enc` and authorize again. |
+
+### Google Health API
+
+| Message | What to do |
+|---|---|
+| `error 403 ...: ... has not been used / is disabled` | Enable the **Google Health API** in your Google Cloud project. |
+| `error 403 ...` (any other) | That permission was not granted. Authorize again and tick every box on the consent screen. |
+| `error 401 ...` | The access token was refused. Authorize again. |
+| `error 429 ...` | Google's rate limit. Nothing to fix: the next run tries again. |
+
+### intervals.icu
+
+| Message | What to do |
+|---|---|
+| `intervals.icu refused the request (HTTP 401)` or `(HTTP 403)` | Check `INTERVALS_API_KEY` (Settings > Developer on intervals.icu) and `INTERVALS_ATHLETE_ID`: `0` means the key's owner, otherwise it looks like `i123456`. |
+| `intervals.icu athlete '...' not found (HTTP 404)` | Wrong `INTERVALS_ATHLETE_ID`. |
+| `intervals.icu rate limit reached (HTTP 429)` | Nothing to fix: the next run tries again. |
+| `Too many intervals.icu requests in one run` | A backfill that is too long. Split it with `--from` / `--to` into shorter ranges. |
+
+### Command arguments
+
+| Message | What to do |
+|---|---|
+| `--days must be between 1 and 3650` | Use a number in that range; for older history use `backfill --from`. |
+| `--from (...) is after --to (...)` | Swap the two dates. |
+| `The range is longer than 3650 days` | Split the backfill into shorter ranges. |
+| `'...' is not a date in the form YYYY-MM-DD` | Write dates as `2025-01-31`. |
+
 ## Run on your computer
 
 Install [uv](https://docs.astral.sh/uv/), download this repository, then put the
@@ -300,8 +364,9 @@ The bridge is free and stays free. If it saves you time, you can leave a tip at 
 There is also a paid PDF guide,
 [Keep Your Fitbit Data After the Google Health Switch](https://antivex.gumroad.com/l/fitbit-google-health-intervals),
 for people who are not sure which route fits them: it compares Health Connect, Health Sync, Apple Health,
-CSV upload, the intervals.icu API and this bridge step by step, shows how to fill the gap since 2 November,
-and lists this bridge's error messages with their fixes. You don't need it to use the bridge.
+CSV upload, the intervals.icu API and this bridge step by step, and shows how to fill the gap since
+2 November. You don't need it to use the bridge: this bridge's error messages are free, above in
+[Error messages, one by one](#error-messages-one-by-one).
 
 ## License
 

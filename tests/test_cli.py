@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -123,13 +124,48 @@ def test_error_summary_says_where_to_look(github):
     assert main(["sync"]) == 2
     summary = github.read_text(encoding="utf-8")
     assert "Missing setting(s)" in summary
-    assert "https://github.com/antivex/google-health-to-intervals#faq" in summary
+    assert "https://github.com/antivex/google-health-to-intervals#error-messages-one-by-one" in summary
     assert "https://github.com/antivex/google-health-to-intervals/issues/new" in summary
     assert "https://antivex.gumroad.com/l/fitbit-google-health-intervals" in summary
 
 
-def test_error_on_a_computer_points_to_the_faq(capsys):
+def test_error_on_a_computer_points_to_the_error_list(capsys):
     assert main(["sync"]) == 2
     err = capsys.readouterr().err
-    assert "#faq" in err and "issues/new" in err
+    assert "#error-messages-one-by-one" in err and "issues/new" in err
     assert "gumroad" not in err  # one line only in a terminal, no sales pitch
+
+
+def test_readme_error_list_covers_the_real_messages():
+    """The footer promises a list with every message: keep that promise honest."""
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    section = readme.split("## Error messages, one by one", 1)[1].split("\n## ", 1)[0]
+    for message in [
+        "Missing setting(s)",
+        "is not a valid time zone",
+        "That does not look like the address from the browser",
+        "expected 127.0.0.1",
+        "has no 'code' or 'state'",
+        "access was not granted",
+        "created with different secrets",
+        "invalid_grant",
+        "did not return a refresh token",
+        "invalid_client",
+        "No Google authorization found",
+        "changed since the last authorization",
+        "expired or was revoked",
+        "not a ghti token file",
+        "wrong key or damaged file",
+        "is disabled",
+        "error 401",
+        "error 429",
+        "refused the request (HTTP 401)",
+        "not found (HTTP 404)",
+        "rate limit reached (HTTP 429)",
+        "Too many intervals.icu requests in one run",
+        "--days must be between 1 and 3650",
+        "is after",
+        "longer than 3650 days",
+        "is not a date in the form YYYY-MM-DD",
+    ]:
+        assert message in section, message
