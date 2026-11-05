@@ -11,7 +11,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # `ghti status` can refresh the authorization (the 7-day guess of a project in
+  # "Testing" mode runs out before Google's own date). Google may hand back a NEW
+  # refresh token, and the old one then stops working: if this run cannot commit it,
+  # the token kept in state/ is dead and every later sync fails. So: write, and the
+  # same state lock as the other workflows.
+  contents: write
+
+concurrency:
+  group: ghti-state
+  cancel-in-progress: false
 
 jobs:
   check-token:
@@ -35,3 +44,17 @@ jobs:
           else
             uv run --frozen ghti status --skip-if-unconfigured --fail-on-reminder
           fi
+
+      - name: Save the encrypted token if the reminder refreshed it
+        if: always()
+        run: |
+          git add -A state
+          if git diff --cached --quiet; then
+            echo "Token unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Save refreshed encrypted Google token"
+          git pull --rebase --quiet
+          git push
