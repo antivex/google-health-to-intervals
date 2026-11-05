@@ -102,6 +102,39 @@ STEPS = {
         {"civilStartTime": {"date": _date(22)}, "civilEndTime": {"date": _date(23)}, "steps": {"countSum": "0"}},
     ]
 }
+# body fat has the same shape as weight (an observation with a sample time):
+# two readings on the same day, so the later one must win.
+BODY_FAT = {
+    "dataPoints": [
+        {
+            "bodyFat": {
+                "sampleTime": {"physicalTime": "2026-10-21T05:31:00Z", "utcOffset": "7200s"},
+                "percentage": 18.4,
+            }
+        },
+        {
+            "bodyFat": {
+                "sampleTime": {
+                    "physicalTime": "2026-10-21T18:02:00Z",
+                    "utcOffset": "7200s",
+                    # civilTime is output only and always comes back with the
+                    # reading: the day is taken from it, the ordering from
+                    # physicalTime, which the spec marks required.
+                    "civilTime": {"date": _date(21), "time": {"hours": 20, "minutes": 2}},
+                },
+                "percentage": 18.9,
+            }
+        },
+    ]
+}
+# floors has the same shape as steps: a daily roll-up, with 0 meaning "no data".
+FLOORS = {
+    "rollupDataPoints": [
+        {"civilStartTime": {"date": _date(20)}, "civilEndTime": {"date": _date(21)}, "floors": {"countSum": "12"}},
+        {"civilStartTime": {"date": _date(21)}, "civilEndTime": {"date": _date(22)}, "floors": {"countSum": "7"}},
+        {"civilStartTime": {"date": _date(22)}, "civilEndTime": {"date": _date(23)}, "floors": {"countSum": "0"}},
+    ]
+}
 
 # One example response per metric, by metric name (see METRICS in mapping.py).
 BY_METRIC: dict[str, dict] = {
@@ -109,8 +142,10 @@ BY_METRIC: dict[str, dict] = {
     "resting heart rate": RESTING_HR,
     "HRV": HRV,
     "weight": WEIGHT,
+    "body fat": BODY_FAT,
     "SpO2": SPO2,
     "steps": STEPS,
+    "floors": FLOORS,
     "VO2max": VO2MAX,
     "respiratory rate": RESPIRATION,
 }

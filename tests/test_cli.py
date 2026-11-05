@@ -84,8 +84,8 @@ def test_export_csv(settings, mock_http, tmp_path, capsys):
     out_file = tmp_path / "wellness.csv"
     assert main(["export-csv", "--days", "3", "-o", str(out_file)]) == 0
     lines = out_file.read_text(encoding="utf-8").splitlines()
-    assert lines[0] == "date,sleepSecs,restingHR,hrv,weight,spO2,steps,vo2max,respiration"
-    assert lines[2] == "2026-10-21,25200,52,48.3,72.9,96.4,10456,,"
+    assert lines[0] == "date,sleepSecs,restingHR,hrv,weight,bodyFat,spO2,steps,floorsClimbed,vo2max,respiration"
+    assert lines[2] == "2026-10-21,25200,52,48.3,72.9,18.9,96.4,10456,7,,"
     assert len(lines) == 4
 
 

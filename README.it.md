@@ -13,8 +13,10 @@ non può usare le app Android (soprattutto chi ha l'**iPhone**). Gira **gratis s
 account GitHub** (GitHub Actions): niente Raspberry Pi, niente server.
 
 **Cosa copia:** sonno (`sleepSecs`), battito a riposo (`restingHR`), HRV (`hrv`),
-peso (`weight`), SpO2 (`spO2`), passi (`steps`), VO2max (`vo2max`),
-respirazione (`respiration`). Il punteggio del sonno non è disponibile nella
+peso (`weight`), grasso corporeo (`bodyFat`), SpO2 (`spO2`), passi (`steps`),
+piani saliti (`floorsClimbed`), VO2max (`vo2max`), respirazione
+(`respiration`). Grasso corporeo e piani saliti arrivano solo se li misura un
+tuo dispositivo (una bilancia smart, un altimetro). Il punteggio del sonno non è disponibile nella
 Google Health API. I valori vuoti non vengono mai inviati, quindi non cancellano
 quello che hai già su intervals.icu.
 
@@ -58,8 +60,8 @@ niente a nessuno:
 
 ```
 Would send 3 day(s) to intervals.icu (2026-10-20 to 2026-10-22).
-  2026-10-20: steps=8123, vo2max=47.3
-  2026-10-21: sleepSecs=25200, restingHR=52, hrv=48.3, weight=72.9, spO2=96.4, steps=10456
+  2026-10-20: steps=8123, floorsClimbed=12, vo2max=47.3
+  2026-10-21: sleepSecs=25200, restingHR=52, hrv=48.3, weight=72.9, bodyFat=18.9, spO2=96.4, steps=10456, floorsClimbed=7
   2026-10-22: sleepSecs=23400
 ```
 

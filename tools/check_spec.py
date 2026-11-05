@@ -10,7 +10,8 @@ libraries are generated from - and asserts, one by one, that
   * every data type we put in a URL exists,
   * every JSON field our extractors read exists in the schema of that data type,
   * every filter path we send is one of the filter patterns the API documents,
-  * the response keys we parse and the page-size caps we assume are the real ones.
+  * the response keys we parse and the page-size caps we assume are the real ones
+    (including the 90-point page and 90-day range of the daily roll-up).
 
 Run it after any change to mapping.py, and whenever Google ships a new revision:
 
@@ -43,8 +44,10 @@ DATA_TYPES: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
         ),
     ),
     ("weight", "weight", "Weight", ("weightGrams", "sampleTime")),
+    ("body-fat", "bodyFat", "BodyFat", ("percentage", "sampleTime")),
     ("daily-oxygen-saturation", "dailyOxygenSaturation", "DailyOxygenSaturation", ("averagePercentage", "date")),
     ("steps", "steps", "Steps", ()),  # read through the daily roll-up, see below
+    ("floors", "floors", "Floors", ()),  # idem: an interval type, summed by the roll-up
     ("daily-vo2-max", "dailyVo2Max", "DailyVO2Max", ("vo2Max", "date")),
     ("daily-respiratory-rate", "dailyRespiratoryRate", "DailyRespiratoryRate", ("breathsPerMinute", "date")),
 )
@@ -56,8 +59,9 @@ NESTED: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("SessionTimeInterval", ("civilEndTime", "endTime", "endUtcOffset")),
     ("ObservationSampleTime", ("civilTime", "physicalTime", "utcOffset")),
     ("CivilDateTime", ("date",)),
-    ("DailyRollupDataPoint", ("civilStartTime", "steps")),
+    ("DailyRollupDataPoint", ("civilStartTime", "steps", "floors")),
     ("StepsRollupValue", ("countSum",)),
+    ("FloorsRollupValue", ("countSum",)),
     ("CivilTimeInterval", ("start", "end")),
     ("DailyRollUpDataPointsRequest", ("range", "windowSizeDays", "pageSize", "pageToken")),
     ("DailyRollUpDataPointsResponse", ("rollupDataPoints", "nextPageToken")),
@@ -71,6 +75,7 @@ FILTERS = (
     "daily_resting_heart_rate.date",
     "daily_heart_rate_variability.date",
     "weight.sample_time.civil_time",
+    "body_fat.sample_time.civil_time",
     "daily_oxygen_saturation.date",
     "daily_vo2_max.date",
     "daily_respiratory_rate.date",
@@ -93,6 +98,10 @@ SCOPES = (
 def fetch(url: str = DISCOVERY) -> dict:
     with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 - fixed https URL
         return json.loads(response.read().decode("utf-8"))
+
+
+def properties_of(spec: dict, schema: str) -> dict:
+    return spec["schemas"].get(schema, {}).get("properties") or {}
 
 
 def properties(spec: dict, schema: str) -> set[str]:
@@ -142,6 +151,16 @@ def check(spec: dict) -> list[str]:
     if sleep_page not in methods["list"]["parameters"]["pageSize"]["description"]:
         bad.append("the cap of 25 data points per sleep page is no longer stated: check page_size in mapping.py")
 
+    # dailyRollUp takes its page size and range in the request body, not in the
+    # query string: both caps are stated in that schema.
+    rollup_request = properties_of(spec, "DailyRollUpDataPointsRequest")
+    if "The maximum page size is `90`" not in (rollup_request.get("pageSize", {}).get("description") or ""):
+        bad.append("the cap of 90 data points per roll-up page is no longer stated: check ROLLUP_PAGE_SIZE")
+    if "maximum range for all other data types is 90 days" not in (
+        rollup_request.get("range", {}).get("description") or ""
+    ):
+        bad.append("the 90-day maximum range of dailyRollUp is no longer stated: check MAX_ROLLUP_DAYS")
+
     documented = set()
     for method in methods.values():
         documented.update(method.get("scopes") or [])
@@ -159,7 +178,7 @@ def main() -> int:
         print(f"the discovery document could not be read: {error}")
         return 2
     bad = check(spec)
-    checked = len(DATA_TYPES) + len(NESTED) + len(FILTERS) + len(METHODS) + 2
+    checked = len(DATA_TYPES) + len(NESTED) + len(FILTERS) + len(METHODS) + 4
     print(f"Google Health API {spec.get('version')}, revision {spec.get('revision')}: {checked} checks")
     if bad:
         for line in bad:

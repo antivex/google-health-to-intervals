@@ -39,5 +39,15 @@ def test_every_metric_has_an_example():
 def test_examples_cover_every_field_except_respiration():
     """The example week fills every wellness field the bridge can write."""
     fields = {reading.field for _, reading in examples.readings()}
-    assert fields == {"sleepSecs", "restingHR", "hrv", "weight", "spO2", "steps", "vo2max"}
+    assert fields == {
+        "sleepSecs",
+        "restingHR",
+        "hrv",
+        "weight",
+        "bodyFat",
+        "spO2",
+        "steps",
+        "floorsClimbed",
+        "vo2max",
+    }
     assert examples.points(examples.RESPIRATION) == []  # on purpose: a metric with no data

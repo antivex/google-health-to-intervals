@@ -1,9 +1,11 @@
 from datetime import date
 
-from conftest import HRV, RESTING_HR, SLEEP, SPO2, STEPS, VO2MAX, WEIGHT
+from conftest import BODY_FAT, FLOORS, HRV, RESTING_HR, SLEEP, SPO2, STEPS, VO2MAX, WEIGHT
 from ghti.mapping import (
     METRICS,
     build_filter,
+    extract_body_fat,
+    extract_floors,
     extract_sleep,
     extract_steps,
     extract_weight,
@@ -78,6 +80,27 @@ def test_weight_keeps_the_latest_measurement_of_the_day_in_kg():
 def test_steps_zero_means_no_data():
     found = [r for p in STEPS["rollupDataPoints"] for r in extract_steps(p)]
     assert [(r.day.day, r.value) for r in found] == [(20, 8123), (21, 10456)]
+
+
+def test_body_fat_keeps_the_latest_reading_of_the_day_as_a_percentage():
+    """Same shape as weight: two readings on 21 October, the evening one wins.
+    The second one carries only a civil time, the first a physical time: both
+    must land on the same day, or one of the two would be dropped."""
+    days = merge(readings("body fat", BODY_FAT))
+    assert days == {date(2026, 10, 21): {"bodyFat": 18.9}}
+    assert extract_body_fat({"bodyFat": {"percentage": 0}}) == []  # 0% is not a measurement
+    assert extract_body_fat({"bodyFat": {"percentage": 18.4}}) == []  # no sample time: no day
+
+
+def test_floors_comes_from_the_daily_rollup_and_zero_means_no_data():
+    found = [r for p in FLOORS["rollupDataPoints"] for r in extract_floors(p)]
+    assert [(r.day.day, r.field, r.value) for r in found] == [
+        (20, "floorsClimbed", 12),
+        (21, "floorsClimbed", 7),
+    ]
+    # a steps roll-up must not be read as floors, and the other way round
+    assert extract_floors(STEPS["rollupDataPoints"][0]) == []
+    assert extract_steps(FLOORS["rollupDataPoints"][0]) == []
 
 
 def test_missing_or_broken_values_are_ignored():

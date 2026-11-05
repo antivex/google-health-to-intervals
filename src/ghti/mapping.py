@@ -34,7 +34,26 @@ METRICS_SCOPE = "https://www.googleapis.com/auth/googlehealth.health_metrics_and
 ACTIVITY_SCOPE = "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly"
 
 # intervals.icu wellness fields we may write, in CSV column order.
-FIELDS = ("sleepSecs", "restingHR", "hrv", "weight", "spO2", "steps", "vo2max", "respiration")
+# Names and types from the intervals.icu "Wellness" schema (read again
+# 2026-11-05): bodyFat is a float percentage, floorsClimbed an int32.
+FIELDS = (
+    "sleepSecs",
+    "restingHR",
+    "hrv",
+    "weight",
+    "bodyFat",
+    "spO2",
+    "steps",
+    "floorsClimbed",
+    "vo2max",
+    "respiration",
+)
+
+# dailyRollUp caps a page at 90 data points, whatever we ask for (spec revision
+# 20261105: "The maximum page size is `90`"), and its range at 90 days for the
+# types we use. With windowSizeDays=1 a 90-day chunk is at most 90 points, so
+# one page per chunk is enough and no page is ever refused for being too large.
+ROLLUP_PAGE_SIZE = 90
 
 
 @dataclass(frozen=True)
@@ -201,16 +220,45 @@ def extract_weight(point: dict) -> list[Reading]:
     return [Reading(day, "weight", round(grams / 1000, 2), str(sample.get("physicalTime", "")))]
 
 
-def extract_steps(point: dict) -> list[Reading]:
-    # Names checked against the spec (revision 20261105): DailyRollupDataPoint
-    # with "civilStartTime.date" and "steps.countSum" (int64 as string).
-    # TO VERIFY WITH REAL DATA: that a sum of 0 means "no data" (watch not worn)
-    # and not a real zero. It is skipped, so intervals.icu is not overwritten.
-    day = _date((point.get("civilStartTime") or {}).get("date"))
-    count = _number((point.get("steps") or {}).get("countSum"))
-    if day is None or not count:
+def _rollup(key: str, field: str):
+    """Extractor for a daily roll-up: DailyRollupDataPoint with
+    {"civilStartTime": {"date": ...}, key: {"countSum": n}}.
+
+    Names checked against the spec (revision 20261105): "civilStartTime.date",
+    "steps.countSum" (StepsRollupValue) and "floors.countSum"
+    (FloorsRollupValue), both int64 written as a string.
+
+    TO VERIFY WITH REAL DATA: that a sum of 0 means "no data" (watch not worn)
+    and not a real zero. It is skipped, so intervals.icu is not overwritten.
+    """
+
+    def extract(point: dict) -> list[Reading]:
+        day = _date((point.get("civilStartTime") or {}).get("date"))
+        count = _number((point.get(key) or {}).get("countSum"))
+        if day is None or not count:
+            return []
+        return [Reading(day, field, int(count))]
+
+    return extract
+
+
+extract_steps = _rollup("steps", "steps")
+extract_floors = _rollup("floors", "floorsClimbed")
+
+
+def extract_body_fat(point: dict) -> list[Reading]:
+    # Names checked against the spec (revision 20261105): union key "bodyFat",
+    # "percentage" (double, range [0, 100]) and the same ObservationSampleTime
+    # as weight ("civilTime.date", or "physicalTime" + "utcOffset").
+    body_fat = point.get("bodyFat") or {}
+    percentage = _number(body_fat.get("percentage"))
+    sample = body_fat.get("sampleTime") or {}
+    day = _date((sample.get("civilTime") or {}).get("date")) or _local_day(
+        sample.get("physicalTime"), sample.get("utcOffset")
+    )
+    if not percentage or day is None:
         return []
-    return [Reading(day, "steps", int(count))]
+    return [Reading(day, "bodyFat", round(percentage, 1), str(sample.get("physicalTime", "")))]
 
 
 # --- the metrics we copy ---------------------------------------------------------
@@ -275,6 +323,20 @@ METRICS: tuple[Metric, ...] = (
         extract=extract_weight,
     ),
     Metric(
+        name="body fat",
+        data_type="body-fat",
+        method="list",
+        # Same "sample observation" shape as weight, so the same filter pattern
+        # ({sample_data_type}.sample_time.civil_time, spec revision 20261105).
+        filter_field="body_fat.sample_time.civil_time",
+        page_size=1000,
+        # body-fat is in the health metrics scope (developers.google.com/health/data-types,
+        # read 2026-11-05), the one this bridge already asks for: no new consent screen.
+        scope=METRICS_SCOPE,
+        combine="last",  # several readings in a day: the latest wins, as for weight
+        extract=extract_body_fat,
+    ),
+    Metric(
         name="SpO2",
         data_type="daily-oxygen-saturation",
         method="list",
@@ -290,10 +352,25 @@ METRICS: tuple[Metric, ...] = (
         data_type="steps",
         method="dailyRollUp",
         filter_field=None,
-        page_size=1000,
+        page_size=ROLLUP_PAGE_SIZE,
         scope=ACTIVITY_SCOPE,
         combine="last",
         extract=extract_steps,
+    ),
+    Metric(
+        name="floors",
+        data_type="floors",
+        # floors is an interval type, like steps: a single reading is "n floors
+        # between 9:14 and 9:21", so the daily total has to come from the
+        # roll-up (DailyRollupDataPoint.floors.countSum) and not from list.
+        method="dailyRollUp",
+        filter_field=None,
+        page_size=ROLLUP_PAGE_SIZE,
+        # floors is in the activity and fitness scope (developers.google.com/health/data-types,
+        # read 2026-11-05), already asked for by steps: no new consent screen.
+        scope=ACTIVITY_SCOPE,
+        combine="last",
+        extract=extract_floors,
     ),
     Metric(
         name="VO2max",

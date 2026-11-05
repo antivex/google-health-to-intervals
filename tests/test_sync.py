@@ -18,15 +18,17 @@ from conftest import (
 from ghti.cli import main
 
 EXPECTED = [
-    {"id": "2026-10-20", "steps": 8123, "vo2max": 47.3},
+    {"id": "2026-10-20", "steps": 8123, "floorsClimbed": 12, "vo2max": 47.3},
     {
         "id": "2026-10-21",
         "sleepSecs": 25200,
         "restingHR": 52,
         "hrv": 48.3,
         "weight": 72.9,
+        "bodyFat": 18.9,
         "spO2": 96.4,
         "steps": 10456,
+        "floorsClimbed": 7,
     },
     {"id": "2026-10-22", "sleepSecs": 23400},
 ]

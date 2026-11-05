@@ -13,7 +13,7 @@ import respx
 
 import ghti.config as config
 from ghti.crypto import Keys
-from ghti.examples import HRV, RESPIRATION, RESTING_HR, SLEEP, SPO2, STEPS, VO2MAX, WEIGHT
+from ghti.examples import BODY_FAT, FLOORS, HRV, RESPIRATION, RESTING_HR, SLEEP, SPO2, STEPS, VO2MAX, WEIGHT
 from ghti.oauth import TOKEN_ENDPOINT, StoredToken, TokenStore
 
 NOW = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
@@ -98,17 +98,30 @@ def mock_refresh(router, status: int = 200, body: dict | None = None):
 # `ghti demo` and the tests always use the same data.
 
 # re-exported for the tests
-__all__ = ["HRV", "RESPIRATION", "RESTING_HR", "SLEEP", "SPO2", "STEPS", "VO2MAX", "WEIGHT"]
+__all__ = [
+    "BODY_FAT",
+    "FLOORS",
+    "HRV",
+    "RESPIRATION",
+    "RESTING_HR",
+    "SLEEP",
+    "SPO2",
+    "STEPS",
+    "VO2MAX",
+    "WEIGHT",
+]
 
 GOOGLE_ROUTES = {
     ("GET", f"{DT}/sleep/dataPoints:reconcile"): SLEEP,
     ("GET", f"{DT}/daily-resting-heart-rate/dataPoints"): RESTING_HR,
     ("GET", f"{DT}/daily-heart-rate-variability/dataPoints"): HRV,
     ("GET", f"{DT}/weight/dataPoints"): WEIGHT,
+    ("GET", f"{DT}/body-fat/dataPoints"): BODY_FAT,
     ("GET", f"{DT}/daily-oxygen-saturation/dataPoints"): SPO2,
     ("GET", f"{DT}/daily-vo2-max/dataPoints"): VO2MAX,
     ("GET", f"{DT}/daily-respiratory-rate/dataPoints"): RESPIRATION,
     ("POST", f"{DT}/steps/dataPoints:dailyRollUp"): STEPS,
+    ("POST", f"{DT}/floors/dataPoints:dailyRollUp"): FLOORS,
 }
 
 

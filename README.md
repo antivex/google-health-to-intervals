@@ -40,13 +40,16 @@ click **Fields** and add it (for the calendar: **Options -> Wellness**).
 | Resting heart rate | `restingHR` |
 | Heart rate variability (nightly rMSSD) | `hrv` |
 | Weight (last weigh-in of the day) | `weight` |
+| Body fat % (last reading of the day) | `bodyFat` |
 | SpO2 (daily average) | `spO2` |
 | Steps | `steps` |
+| Floors climbed | `floorsClimbed` |
 | VO2 max (cardio fitness) | `vo2max` |
 | Breathing rate | `respiration` |
 
-The Google Health API does not provide the Fitbit *sleep score*, so
-`sleepScore` stays empty. Empty values are never sent, so they never erase what
+Body fat and floors climbed only arrive if a device of yours measures them (a
+smart scale, an altimeter). The Google Health API does not provide the Fitbit
+*sleep score*, so `sleepScore` stays empty. Empty values are never sent, so they never erase what
 you already have in intervals.icu.
 
 > **Status: early version.** The Google Health API replaced the Fitbit Web API
@@ -90,14 +93,15 @@ cases are handled: a nap is ignored, the later weigh-in of a day wins, a night
 belongs to the day you wake up, and a day with 0 steps is left alone.
 
 Would send 3 day(s) to intervals.icu (2026-10-20 to 2026-10-22).
-  2026-10-20: steps=8123, vo2max=47.3
-  2026-10-21: sleepSecs=25200, restingHR=52, hrv=48.3, weight=72.9, spO2=96.4, steps=10456
+  2026-10-20: steps=8123, floorsClimbed=12, vo2max=47.3
+  2026-10-21: sleepSecs=25200, restingHR=52, hrv=48.3, weight=72.9, bodyFat=18.9, spO2=96.4, steps=10456, floorsClimbed=7
   2026-10-22: sleepSecs=23400
 ```
 
 `uv run ghti demo --json` also prints the exact records intervals.icu would
 receive. The fields are the wellness fields of intervals.icu: `sleepSecs`,
-`restingHR`, `hrv`, `weight`, `spO2`, `steps`, `vo2max`, `respiration`. A field
+`restingHR`, `hrv`, `weight`, `bodyFat`, `spO2`, `steps`, `floorsClimbed`,
+`vo2max`, `respiration`. A field
 with no data is never sent, so it cannot erase what intervals.icu already has.
 
 Lost? `uv run ghti` with no command prints the four steps in order, and says
