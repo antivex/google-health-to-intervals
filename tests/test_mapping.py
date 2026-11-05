@@ -102,28 +102,33 @@ def test_filter_syntax():
     )
 
 
-def test_other_spelling_swaps_only_the_data_type_prefix():
+def test_other_spelling_turns_every_part_of_the_path():
     from ghti.mapping import other_spelling
 
     assert other_spelling("daily_heart_rate_variability.date") == "dailyHeartRateVariability.date"
     assert other_spelling("dailyHeartRateVariability.date") == "daily_heart_rate_variability.date"
     assert other_spelling("daily_vo2_max.date") == "dailyVo2Max.date"
     assert other_spelling("dailyVo2Max.date") == "daily_vo2_max.date"
-    # the parts after the first dot stay snake_case in both sources
-    assert other_spelling("weight.sample_time.civil_time") is None
-    assert other_spelling("sleep.interval.civil_end_time") is None
+    # the parts after the first dot are turned too: sleep and weight carry the
+    # ambiguity there, and used to be left with nothing to retry
+    assert other_spelling("sleep.interval.civil_end_time") == "sleep.interval.civilEndTime"
+    assert other_spelling("sleep.interval.civilEndTime") == "sleep.interval.civil_end_time"
+    assert other_spelling("weight.sample_time.civil_time") == "weight.sampleTime.civilTime"
+    assert other_spelling("weight.sampleTime.civilTime") == "weight.sample_time.civil_time"
+    # nothing to turn: no request is wasted on the same filter twice
+    assert other_spelling("steps.date") is None
+    assert other_spelling("date") is None
 
 
-def test_every_metric_filter_can_be_written_both_ways_or_neither():
-    """A daily-* metric must have a second spelling to fall back on; the
-    single-word ones must have none, or we would waste a request."""
+def test_every_metric_filter_has_a_second_spelling_to_fall_back_on():
+    """No metric may be left without a fallback: if the API wants the other
+    spelling, a metric with none would simply never arrive."""
     from ghti.mapping import METRICS, other_spelling
 
     for metric in METRICS:
         if metric.filter_field is None:
             continue
-        prefix = metric.filter_field.split(".")[0]
         other = other_spelling(metric.filter_field)
-        assert (other is not None) == ("_" in prefix), metric.name
-        if other is not None:
-            assert other_spelling(other) == metric.filter_field, metric.name
+        assert other is not None, metric.name
+        assert other != metric.filter_field, metric.name
+        assert other_spelling(other) == metric.filter_field, metric.name

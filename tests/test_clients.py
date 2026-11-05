@@ -177,12 +177,38 @@ def test_google_gives_up_after_one_retry(mock_http):
     assert len(route.calls) == 2
 
 
-def test_sleep_and_weight_have_one_spelling_only(mock_http):
-    """Their prefix is one lowercase word: there is nothing to retry, so a 400
-    comes straight back instead of costing a second request."""
+def test_sleep_is_retried_with_the_other_spelling_too(mock_http):
+    """Sleep is the field most people buy this for, and its prefix is one
+    lowercase word: the second spelling has to come from the rest of the path
+    (`interval.civil_end_time` -> `interval.civilEndTime`), or a 400 on the
+    filter would mean sleep never arrives at all."""
     route = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/sleep/dataPoints:reconcile").mock(
-        return_value=_invalid_filter("sleep")
+        side_effect=[
+            _invalid_filter("sleep.interval.civil_end_time"),
+            httpx.Response(200, json={"dataPoints": [{"n": 1}]}),
+        ]
     )
-    with pytest.raises(GoogleHealthError, match="unknown field"), httpx.Client() as http:
-        GoogleHealthClient(http, "t").fetch(BY_NAME["sleep"], date(2026, 10, 20), date(2026, 10, 20))
-    assert len(route.calls) == 1
+    with httpx.Client() as http:
+        client = GoogleHealthClient(http, "t")
+        points = client.fetch(BY_NAME["sleep"], date(2026, 10, 20), date(2026, 10, 20))
+
+    assert points == [{"n": 1}]
+    first, second = (call.request.url.params["filter"] for call in route.calls)
+    assert first.startswith('sleep.interval.civil_end_time >= "2026-10-20"')
+    assert second.startswith('sleep.interval.civilEndTime >= "2026-10-20"')
+    assert client.filter_respelled is True
+
+
+def test_weight_is_retried_with_the_other_spelling_too(mock_http):
+    route = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/weight/dataPoints").mock(
+        side_effect=[
+            _invalid_filter("weight.sample_time.civil_time"),
+            httpx.Response(200, json={"dataPoints": []}),
+        ]
+    )
+    with httpx.Client() as http:
+        GoogleHealthClient(http, "t").fetch(BY_NAME["weight"], date(2026, 10, 20), date(2026, 10, 20))
+
+    first, second = (call.request.url.params["filter"] for call in route.calls)
+    assert first.startswith('weight.sample_time.civil_time >= "2026-10-20"')
+    assert second.startswith('weight.sampleTime.civilTime >= "2026-10-20"')

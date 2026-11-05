@@ -89,30 +89,44 @@ def build_filter(field: str, start: date, end_exclusive: date) -> str:
     return f'{field} >= "{start.isoformat()}" AND {field} < "{end_exclusive.isoformat()}"'
 
 
+def _camel(part: str) -> str:
+    head, *tail = part.split("_")
+    return head + "".join(word[:1].upper() + word[1:] for word in tail)
+
+
+def _snake(part: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", part).lower()
+
+
 def other_spelling(filter_field: str) -> str | None:
-    """The same filter path with the data type prefix spelled the other way.
+    """The same filter path written in the other spelling, snake_case <-> camelCase.
 
     The two sources disagree and neither could be tried on a real account before
-    the first release: the REST reference writes the prefix in camelCase
+    the first release: the REST reference writes the field path in camelCase
     (`dailyHeartRateVariability.date >= "2024-08-15"`, read 2026-11-05 on
     https://developers.google.com/health/reference/rest/v4/users.dataTypes.dataPoints/list),
     the official google-health-cli writes it in snake_case. Whichever one the API
     refuses with 400, the client retries with this one, so a wrong guess costs a
-    request instead of five empty metrics.
+    request instead of a metric that never arrives.
 
-    Returns None when the prefix is a single lowercase word (`sleep`, `weight`,
-    `steps`): there both spellings are the same. Only the prefix changes; the
-    parts after the first dot are snake_case in both sources.
+    Every part of the path is turned, not only the data type prefix: the
+    ambiguity is in each proto field name, so `sleep.interval.civil_end_time`
+    becomes `sleep.interval.civilEndTime`. Turning the prefix alone left sleep
+    and weight with no second spelling to try, because their prefix is a single
+    lowercase word - and those are two of the three fields people buy this for.
+
+    Returns None when the path reads the same in both spellings (nothing to
+    retry, so no request is wasted).
     """
-    prefix, dot, rest = filter_field.partition(".")
-    if "_" in prefix:
-        head, *tail = prefix.split("_")
-        other = head + "".join(word[:1].upper() + word[1:] for word in tail)
-    elif any(char.isupper() for char in prefix):
-        other = re.sub(r"(?<!^)(?=[A-Z])", "_", prefix).lower()
+    parts = filter_field.split(".")
+    if any("_" in part for part in parts):
+        turn = _camel
+    elif any(char.isupper() for part in parts for char in part):
+        turn = _snake
     else:
         return None
-    return other + dot + rest
+    other = ".".join(turn(part) for part in parts)
+    return other if other != filter_field else None
 
 
 # --- extractors ----------------------------------------------------------------
@@ -198,7 +212,7 @@ METRICS: tuple[Metric, ...] = (
         name="resting heart rate",
         data_type="daily-resting-heart-rate",
         method="list",
-        # The prefix is snake_case here, as in the official google-health-cli;
+        # The path is snake_case here, as in the official google-health-cli;
         # the REST reference writes it camelCase (read again 2026-11-05). The
         # client tries the other spelling on a 400, so either one works: see
         # other_spelling() above.

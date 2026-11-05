@@ -37,7 +37,7 @@ class GoogleHealthClient:
         self.max_retries = max_retries
         self.sleep = sleep
         self.requests = 0
-        # Set once, when a 400 shows the other spelling of the filter prefix is
+        # Set once, when a 400 shows the other spelling of the filter path is
         # the right one (see mapping.other_spelling). From then on every metric
         # uses it, because the spelling is a rule of the API, not of one metric.
         self.filter_respelled = False
@@ -135,7 +135,7 @@ def _number(value: str | None) -> float | None:
 
 def _looks_like_filter_error(error: GoogleHealthError) -> bool:
     """True when a 400 blames the filter, so retrying with the other spelling
-    of the prefix can help. Any other 400 (a real bug in our request) is left
+    of the field path can help. Any other 400 (a real bug in our request) is left
     alone, so a wrong guess is never hidden behind a second request."""
     if error.status != 400:
         return False
