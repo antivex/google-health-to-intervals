@@ -6,6 +6,8 @@ Google or intervals.icu these tests would fail.
 
 from __future__ import annotations
 
+import json
+
 from ghti import examples
 from ghti.cli import main
 from ghti.mapping import METRICS
@@ -25,10 +27,20 @@ def test_demo_runs_with_nothing_configured(capsys):
 
 def test_demo_json_shows_what_intervals_would_receive(capsys):
     assert main(["demo", "--json"]) == 0
-    out = capsys.readouterr().out
-    assert '"id": "2026-10-21"' in out
-    assert '"restingHR": 52' in out
-    assert "wellness-bulk" in out
+    captured = capsys.readouterr()
+    assert '"id": "2026-10-21"' in captured.out
+    assert '"restingHR": 52' in captured.out
+    # the words stay readable on a terminal, on the other stream
+    assert "wellness-bulk" in captured.err
+    assert "Example data, invented" in captured.err
+
+
+def test_demo_json_stdout_is_json_and_nothing_else(capsys):
+    """`ghti demo --json | jq` has to work: no prose mixed into stdout."""
+    assert main(["demo", "--json"]) == 0
+    records = json.loads(capsys.readouterr().out)
+    assert [record["id"] for record in records] == ["2026-10-20", "2026-10-21", "2026-10-22"]
+    assert records[1]["restingHR"] == 52
 
 
 def test_every_metric_has_an_example():

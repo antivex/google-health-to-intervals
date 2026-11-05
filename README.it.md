@@ -69,7 +69,9 @@ Mostra anche come vengono trattati i casi che sbagliano tutti: il sonnellino non
 viene contato, di due pesate nello stesso giorno vince la più recente, una notte
 appartiene al giorno in cui ti svegli e un giorno con 0 passi viene lasciato
 stare (non cancella quello che c'è su intervals.icu). Con `--json` vedi i record
-esatti che intervals.icu riceverebbe.
+esatti che intervals.icu riceverebbe: sull'uscita normale c'è solo il JSON (la
+spiegazione va sull'uscita degli errori, quindi a schermo si vede comunque), così
+`uv run ghti demo --json | jq` funziona.
 
 Non sai cosa lanciare? `uv run ghti` senza comando scrive i quattro passi in
 ordine e dice quali hanno bisogno della configurazione (in inglese).

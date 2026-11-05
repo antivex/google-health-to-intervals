@@ -99,7 +99,10 @@ Would send 3 day(s) to intervals.icu (2026-10-20 to 2026-10-22).
 ```
 
 `uv run ghti demo --json` also prints the exact records intervals.icu would
-receive. The fields are the wellness fields of intervals.icu: `sleepSecs`,
+receive, as JSON and nothing else on standard output, so
+`uv run ghti demo --json | jq` works (the explanation above goes to standard
+error and still shows on a terminal). The fields are the wellness fields of
+intervals.icu: `sleepSecs`,
 `restingHR`, `hrv`, `weight`, `bodyFat`, `spO2`, `steps`, `floorsClimbed`,
 `vo2max`, `respiration`. A field
 with no data is never sent, so it cannot erase what intervals.icu already has.

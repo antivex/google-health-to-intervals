@@ -251,12 +251,16 @@ def cmd_demo(args) -> int:
         records_sent=len(records),
         dry_run=True,
     )
-    print(DEMO_NOTE)
-    print()
-    print(report.text(show_values=True))
+    # With --json the words go to stderr and stdout carries the records alone, so
+    # `ghti demo --json | jq` (or any other reader) gets JSON and nothing else. On a
+    # terminal both still show, in the same order as before.
+    words = sys.stderr if args.json else sys.stdout
+    print(DEMO_NOTE, file=words)
+    print(file=words)
+    print(report.text(show_values=True), file=words)
     if args.json:
-        print()
-        print("What intervals.icu would receive (PUT /wellness-bulk):")
+        print(file=words)
+        print("What intervals.icu would receive (PUT /wellness-bulk):", file=words)
         print(json.dumps(records, indent=2, sort_keys=True))
     return 0
 
