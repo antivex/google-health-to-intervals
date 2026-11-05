@@ -17,6 +17,7 @@ import httpx
 
 from ghti.errors import GoogleHealthError
 from ghti.mapping import Metric, build_filter, other_spelling
+from ghti.wait import retry_wait, too_long
 
 BASE_URL = "https://health.googleapis.com/v4/users/me/dataTypes"
 RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -50,8 +51,11 @@ class GoogleHealthClient:
             if response.status_code < 400:
                 return response.json() if response.content else {}
             if response.status_code in RETRY_STATUSES and attempt < self.max_retries:
-                retry_after = _number(response.headers.get("Retry-After"))
-                self.sleep(retry_after if retry_after is not None else 2**attempt * 5)
+                header = response.headers.get("Retry-After")
+                wait = retry_wait(header, 2**attempt * 5)
+                if wait is None:  # Google asked for a long pause: stop, do not block for an hour
+                    raise _error(response, too_long(header))
+                self.sleep(wait)
                 continue
             raise _error(response)
         raise AssertionError("unreachable")
@@ -126,13 +130,6 @@ def _civil(day: date) -> dict:
     }
 
 
-def _number(value: str | None) -> float | None:
-    try:
-        return float(value) if value is not None else None
-    except ValueError:
-        return None
-
-
 def _looks_like_filter_error(error: GoogleHealthError) -> bool:
     """True when a 400 blames the filter, so retrying with the other spelling
     of the field path can help. Any other 400 (a real bug in our request) is left
@@ -143,7 +140,7 @@ def _looks_like_filter_error(error: GoogleHealthError) -> bool:
     return "filter" in message or "invalid_argument" in message or "field" in message
 
 
-def _error(response: httpx.Response) -> GoogleHealthError:
+def _error(response: httpx.Response, extra: str = "") -> GoogleHealthError:
     """Turn a Google error into a message that says what to do."""
     try:
         error = response.json().get("error", {})
@@ -161,4 +158,4 @@ def _error(response: httpx.Response) -> GoogleHealthError:
         hint = " The access token was refused: authorize again."
     elif code == 429:
         hint = " Google rate limit reached: try again later."
-    return GoogleHealthError(f"Google Health API error {code} {status}: {message}.{hint}".strip(), code)
+    return GoogleHealthError(f"Google Health API error {code} {status}: {message}.{hint}{extra}".strip(), code)

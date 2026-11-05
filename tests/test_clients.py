@@ -212,3 +212,53 @@ def test_weight_is_retried_with_the_other_spelling_too(mock_http):
     first, second = (call.request.url.params["filter"] for call in route.calls)
     assert first.startswith('weight.sample_time.civil_time >= "2026-10-20"')
     assert second.startswith('weight.sampleTime.civilTime >= "2026-10-20"')
+
+
+# --- a long "try again later" is refused, not slept through ------------------
+
+
+def test_google_does_not_block_for_an_hour(mock_http):
+    """A 429 with a long Retry-After used to be obeyed: three retries meant up
+    to three hours with no output (and GitHub Actions minutes burnt). Now the
+    run stops at once and the message says how long Google asked for."""
+    route = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/daily-vo2-max/dataPoints").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "3600"}, json={"error": {"code": 429}})
+    )
+    waits = []
+    with pytest.raises(GoogleHealthError, match="asked to wait 60 minutes"), httpx.Client() as http:
+        GoogleHealthClient(http, "t", sleep=waits.append).fetch(BY_NAME["VO2max"], date(2026, 10, 1), date(2026, 10, 1))
+    assert waits == [] and len(route.calls) == 1
+
+
+def test_google_still_waits_a_short_retry_after(mock_http):
+    route = mock_http.route(method="GET", host=GOOGLE, path=f"{DT}/daily-vo2-max/dataPoints").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "45"}),
+            httpx.Response(200, json={"dataPoints": [{"n": 1}]}),
+        ]
+    )
+    waits = []
+    with httpx.Client() as http:
+        client = GoogleHealthClient(http, "t", sleep=waits.append)
+        points = client.fetch(BY_NAME["VO2max"], date(2026, 10, 1), date(2026, 10, 1))
+    assert points == [{"n": 1}] and waits == [45.0] and len(route.calls) == 2
+
+
+def test_intervals_does_not_block_for_an_hour(mock_http):
+    route = mock_http.put(INTERVALS_PUT).mock(return_value=httpx.Response(429, headers={"Retry-After": "900"}))
+    waits = []
+    with pytest.raises(IntervalsError, match="asked to wait 15 minutes"), httpx.Client() as http:
+        IntervalsClient(http, API_KEY, "i42", sleep=waits.append).put_wellness([{"id": "2026-10-01", "steps": 1}])
+    assert waits == [] and len(route.calls) == 1
+
+
+def test_intervals_own_backoff_is_not_capped(mock_http):
+    """The 30/60/90 s backoff is ours, not the server's: it stays as it is, so a
+    flaky 503 is still retried three times."""
+    mock_http.put(INTERVALS_PUT).mock(
+        side_effect=[httpx.Response(503), httpx.Response(503), httpx.Response(503), httpx.Response(200)]
+    )
+    waits = []
+    with httpx.Client() as http:
+        IntervalsClient(http, API_KEY, "i42", sleep=waits.append).put_wellness([{"id": "2026-10-01", "steps": 1}])
+    assert waits == [30, 60, 90]

@@ -15,6 +15,7 @@ from datetime import date
 import httpx
 
 from ghti.errors import IntervalsError
+from ghti.wait import retry_wait, too_long
 
 BASE_URL = "https://intervals.icu/api/v1"
 CHUNK_SIZE = 100  # days per request
@@ -65,13 +66,16 @@ class IntervalsClient:
             if response.status_code < 400:
                 return
             if response.status_code in (429, 502, 503, 504) and attempt < self.max_retries:
-                retry_after = response.headers.get("Retry-After", "")
-                self.sleep(float(retry_after) if retry_after.isdigit() else 30 * (attempt + 1))
+                header = response.headers.get("Retry-After")
+                wait = retry_wait(header, 30 * (attempt + 1))
+                if wait is None:  # a long pause asked by the server: stop instead of blocking
+                    raise _error(response, self.athlete_id, too_long(header))
+                self.sleep(wait)
                 continue
             raise _error(response, self.athlete_id)
 
 
-def _error(response: httpx.Response, athlete_id: str) -> IntervalsError:
+def _error(response: httpx.Response, athlete_id: str, extra: str = "") -> IntervalsError:
     code = response.status_code
     if code in (401, 403):
         return IntervalsError(
@@ -81,5 +85,5 @@ def _error(response: httpx.Response, athlete_id: str) -> IntervalsError:
     if code == 404:
         return IntervalsError(f"intervals.icu athlete {athlete_id!r} not found (HTTP 404). Check INTERVALS_ATHLETE_ID.")
     if code == 429:
-        return IntervalsError("intervals.icu rate limit reached (HTTP 429). The next run will try again.")
-    return IntervalsError(f"intervals.icu error HTTP {code}: {response.text[:200]}")
+        return IntervalsError("intervals.icu rate limit reached (HTTP 429). The next run will try again." + extra)
+    return IntervalsError(f"intervals.icu error HTTP {code}: {response.text[:200]}" + extra)
