@@ -187,9 +187,13 @@ New repository secret**. Add these four, one at a time:
 | `INTERVALS_API_KEY` | the API key from step 6 |
 | `INTERVALS_ATHLETE_ID` | your athlete ID from step 6 (e.g. `i123456`) |
 
-Recommended: in the **Variables** tab (same page) add `GHTI_TIMEZONE` with your
-time zone, for example `Europe/Rome` or `America/New_York`. Without it "today"
-is computed in UTC.
+Do add, in the **Variables** tab (same page), `GHTI_TIMEZONE` with your time
+zone, for example `Europe/Rome` or `America/New_York`. Without it "today" is
+computed in UTC, which is not your day: at 21:30 in New York, UTC is already
+tomorrow, so a run asks Google for a day that has not started and skips the one
+that just ended. `ghti check` says so too, under **Time zone**. With it set,
+nights keep landing on the day you wake up even on the two weekends the clock
+moves (`tests/test_time.py`).
 
 ### 8. Authorize Google (first time)
 

@@ -102,13 +102,21 @@ def _offset(duration: Any) -> timedelta:
 
 
 def _local_day(timestamp: Any, utc_offset: Any) -> date | None:
-    """Local calendar day of an RFC 3339 instant plus its UTC offset."""
+    """Local calendar day of an RFC 3339 instant plus its UTC offset.
+
+    An instant that arrives without a zone is read as UTC: RFC 3339 always
+    carries one, but if one ever came without it, `astimezone` would use the
+    clock of the machine and the same night would land on a different day on
+    the owner's PC and on GitHub Actions (UTC).
+    """
     if not timestamp:
         return None
     try:
         instant = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
     except ValueError:
         return None
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=UTC)
     return (instant.astimezone(UTC) + _offset(utc_offset)).date()
 
 
