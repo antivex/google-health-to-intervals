@@ -169,3 +169,28 @@ def test_a_dry_run_that_drops_the_connection_promises_no_resume(settings, mock_h
     assert "ConnectError" in error, error
     assert "--from" not in error, error
     assert "already on intervals.icu" not in error, error
+
+
+def test_empty_days_still_count_as_done(settings, mock_http, capsys):
+    """A year-long backfill often starts before the watch existed: the first
+    window is read, found empty and sent to nobody. It is still done, so the
+    resume day must move past it instead of starting the range again."""
+    from conftest import DT, GOOGLE, GOOGLE_ROUTES, mock_google
+
+    store_token(settings)
+    mock_refresh(mock_http)
+    empty = httpx.Response(200, json={"dataPoints": [], "rollupDataPoints": []})
+    mock_google(mock_http, {path: empty for _, path in GOOGLE_ROUTES})
+    sleep_path = f"{DT}/sleep/dataPoints:reconcile"
+    mock_http.route(method="GET", host=GOOGLE, path=sleep_path).mock(
+        side_effect=[empty, httpx.ConnectError("connection lost")]
+    )
+    put = mock_http.put(INTERVALS_PUT).mock(return_value=httpx.Response(200))
+
+    assert main_sync() == 1
+
+    assert put.calls == []  # nothing was written: there was nothing to write
+    error = capsys.readouterr().err
+    assert "0 day(s)" not in error, error  # that would read like a run that did nothing
+    assert "no data to send" in error, error
+    assert RESUME_COMMAND in error, error

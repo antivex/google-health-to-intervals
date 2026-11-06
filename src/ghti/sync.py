@@ -91,11 +91,23 @@ class SyncInterrupted(GhtiError):
 
 
 def resume_text(cause: Exception, done_through: date, end: date, written: int) -> str:
-    """The cause, then where the run got to, then how to carry on."""
+    """The cause, then where the run got to, then how to carry on, in three lines.
+
+    `written` can be 0 and the run still have got somewhere: a backfill of a
+    year often starts before the user owned the watch, and those days are
+    read, found empty and sent to nobody. Saying "0 day(s) are already on
+    intervals.icu" would read like a run that did nothing at all, so those
+    days are reported as read, not as written.
+    """
+    got_to = (
+        f"  Stopped part-way: {written} day(s) up to {done_through} are already on intervals.icu."
+        if written
+        else f"  Stopped part-way: the days up to {done_through} were read and had no data to send."
+    )
     return "\n".join(
         (
             describe(cause),
-            f"  Stopped part-way: {written} day(s) up to {done_through} are already on intervals.icu.",
+            got_to,
             f"  Carry on from there with: ghti backfill --from {done_through + timedelta(days=1)} --to {end}",
         )
     )
