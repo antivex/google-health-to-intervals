@@ -20,7 +20,7 @@ from ghti.crypto import Keys
 from ghti.errors import AuthRequired, GhtiError, GoogleHealthError, describe
 from ghti.google_health import GoogleHealthClient
 from ghti.intervals import IntervalsClient
-from ghti.mapping import FIELDS, METRICS, merge, to_wellness_records
+from ghti.mapping import FIELDS, METRICS, drop_impossible, merge, to_wellness_records
 from ghti.oauth import StoredToken, TokenStore, refresh_access_token
 
 WINDOW_DAYS = 90  # long ranges are processed (and pushed) 90 days at a time
@@ -154,7 +154,12 @@ def collect(
                 if start <= reading.day <= end:
                     readings.append((metric, reading))
     report.notes.extend(note for note in client.notes if note not in report.notes)
-    return merge(readings)
+    days = merge(readings)
+    # A number that cannot be a measurement is dropped here, at the one gate
+    # every path goes through (sync, backfill, --dry-run and the CSV export),
+    # so what the report shows is exactly what intervals.icu was sent.
+    report.notes.extend(drop_impossible(days))
+    return days
 
 
 def _check(report: SyncReport) -> None:

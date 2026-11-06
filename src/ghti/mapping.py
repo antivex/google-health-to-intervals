@@ -23,6 +23,7 @@ not change.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -432,3 +433,75 @@ def to_wellness_records(days: dict[date, dict[str, float | int]]) -> list[dict]:
         if fields:
             records.append({"id": day.isoformat(), **fields})
     return records
+
+
+# --- numbers a broken watch can produce ---------------------------------------
+
+# Admissible ranges, quoted from the field descriptions in Google's own
+# discovery document (revision 20261105,
+# https://health.googleapis.com/$discovery/rest?version=v4, read 6 November
+# 2026), which is the same source tools/check_spec.py checks the field names
+# against:
+#   Weight.weightGrams                    "Must be in the range `[0, 1000000]`"
+#   BodyFat.percentage                    "Must be in the range `[0, 100]`"
+#   DailyOxygenSaturation.averagePercentage "Must be in the range `[0, 100]`"
+#   DailyVO2Max.vo2Max                    "Must be in the range `[0, 100]`"
+#   HeartRate.beatsPerMinute              "Must be in the range `[1, 300]`"
+# DailyRestingHeartRate.beatsPerMinute carries no range of its own, so it is
+# held to the one Google documents for a heart rate.
+# No medical limit is invented on top of these: a weigh-in of 0.5 kg is inside
+# Google's range and is still sent, because this bridge has no source for what a
+# person can weigh. Fields with no documented range (HRV, respiration, steps,
+# floors) are only required to be a positive finite number; a night is held to
+# the 86,400 seconds a calendar day has.
+RANGES: dict[str, tuple[float, float, str]] = {
+    "weight": (0, 1000, "kg"),
+    "bodyFat": (0, 100, "%"),
+    "spO2": (0, 100, "%"),
+    "vo2max": (0, 100, "ml/kg/min"),
+    "restingHR": (1, 300, "bpm"),
+    "sleepSecs": (0, 86400, "s"),
+    "hrv": (0, math.inf, "ms"),
+    "respiration": (0, math.inf, "breaths/min"),
+    "steps": (0, math.inf, ""),
+    "floorsClimbed": (0, math.inf, ""),
+}
+
+
+def _why_impossible(field: str, value: float | int) -> str | None:
+    """Why this number cannot be a measurement, or None if it can be."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)):
+        # json.loads accepts the NaN, Infinity and -Infinity tokens and
+        # json.dumps writes them straight back; neither is valid JSON, so a
+        # single one of them would make intervals.icu refuse a whole chunk of
+        # up to 100 days instead of that one value.
+        return "is not a number"
+    low, high, unit = RANGES.get(field, (-math.inf, math.inf, ""))
+    if value < low or value > high:
+        shown = f"{high:,.0f}".replace(",", " ") if math.isfinite(high) else ""
+        bound = f" (Google documents {low:g} to {shown} {unit})".rstrip() if math.isfinite(high) else " (it cannot be negative)"
+        return f"is {value:g}{(' ' + unit) if unit else ''}, outside what a measurement can be{bound}"
+    return None
+
+
+def drop_impossible(days: dict[date, dict[str, float | int]]) -> list[str]:
+    """Remove values that cannot be a real measurement, in place, and say which.
+
+    A watch, a scale or a bad reading can hand over a number that is not a
+    measurement at all. Written to intervals.icu it does not look like an error:
+    it becomes a point on the owner's chart, and a weight of 2,000 kg flattens a
+    year of real weigh-ins into a straight line. So a value like that is left
+    out and said out loud, the other fields of the same day still go, and
+    intervals.icu keeps whatever it already had for that field.
+    """
+    notes: list[str] = []
+    for day in sorted(days):
+        for field_name in [f for f in days[day] if f in FIELDS]:
+            why = _why_impossible(field_name, days[day][field_name])
+            if why:
+                value = days[day].pop(field_name)
+                notes.append(
+                    f"{day.isoformat()}: {field_name} {value!r} {why}; not sent, "
+                    "so intervals.icu keeps what it had for that day."
+                )
+    return notes
