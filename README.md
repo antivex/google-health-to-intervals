@@ -287,6 +287,10 @@ Google expires the authorization of "Testing" apps 7 days after you approve it.
 Don't want the red reminder run? Add the repository variable
 `GHTI_REMINDER_EMAIL` = `false`. The reminder then only appears in the run Summary.
 
+The red run comes from `ghti status --fail-on-reminder`, which exits **5** when it
+is only reminding you — not `1`, so a task of your own can tell the reminder from
+a check that never ran. See the table below.
+
 ## Privacy
 
 - Your health data travels **only from Google to intervals.icu**, inside
@@ -618,6 +622,22 @@ Last sync: 2026-11-01 06:30 UTC (4 days ago), 3 day(s) sent.
   Nothing has run for 4 days. If it should run on its own, the daily task is
   not firing: check it, or print it again with `ghti schedule`.
 ```
+
+`status` is the second command built to be an alarm (the other is `gaps`), so its
+exit codes keep "you have something to do" apart from "this check never ran":
+
+| exit | what happened |
+|---|---|
+| `0` | the authorization is fine — and also when it reminds you, unless you pass `--fail-on-reminder` |
+| `5` | with `--fail-on-reminder`: it is **only reminding** you, the authorization still works and expires soon |
+| `3` | the authorization has really expired or was revoked: authorize again |
+| `1` | the check could not run — network down, Google unreachable |
+| `2` | a setting is missing |
+
+`5` is deliberately not `1`: the reminder and a dead network both used to exit 1,
+so a task of yours reading 1 could not tell "renew it tomorrow" from "I never
+managed to ask". Any non-zero still turns the GitHub run red and still sends the
+email, so the **Reminder** workflow is unaffected.
 
 A run that failed is written too, with the message you would have seen, and a
 run with `--dry-run` is not written at all. A long run that broke part-way also

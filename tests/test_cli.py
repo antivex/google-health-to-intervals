@@ -13,7 +13,7 @@ from conftest import (
     mock_refresh,
     store_token,
 )
-from ghti.cli import main
+from ghti.cli import REMINDING, main
 from ghti.oauth import REDIRECT_URI, TOKEN_ENDPOINT, TokenStore
 
 
@@ -57,7 +57,7 @@ def test_auth_finish_with_denied_access(settings, capsys):
 
 def test_status_reminds_on_day_six(settings, github, capsys):
     store_token(settings, age=timedelta(days=6))
-    assert main(["status", "--fail-on-reminder"]) == 1
+    assert main(["status", "--fail-on-reminder"]) == REMINDING
     summary = github.read_text(encoding="utf-8")
     assert "Reminder: the Google authorization expires tomorrow" in summary
     assert "[Authorize Google Health](https://accounts.google.com/" in summary
@@ -240,7 +240,56 @@ def test_a_guessed_date_is_not_told_as_a_fact(settings, github, capsys):
 
 def test_the_day_six_reminder_says_when_the_date_is_only_a_guess(settings, github, capsys):
     store_token(settings, age=timedelta(days=6), expiry_known=False)
-    assert main(["status", "--fail-on-reminder"]) == 1
+    assert main(["status", "--fail-on-reminder"]) == REMINDING
     summary = github.read_text(encoding="utf-8")
     assert "may expire tomorrow" in summary
     assert "Google did not give a date for this one" in summary
+
+
+# --- the reminder has a code of its own ------------------------------------------
+# Measured on 6 November 2026: with --fail-on-reminder, the day-6 reminder and a
+# status that could not even reach Google both exited 1. These four tests keep
+# the two apart.
+
+
+def test_the_reminder_code_is_none_of_the_failure_codes():
+    """If someone gives 5 to an error tomorrow, the reminder stops being readable."""
+    from ghti import errors
+    from ghti.gaps import FOUND
+
+    failures = {
+        cls.exit_code
+        for cls in vars(errors).values()
+        if isinstance(cls, type) and issubclass(cls, errors.GhtiError)
+    }
+    assert REMINDING not in failures
+    assert REMINDING not in (0, FOUND)  # 0 = nothing to do, 4 = days are missing
+
+
+def test_a_status_that_could_not_ask_does_not_look_like_the_reminder(settings, github, mock_http, capsys):
+    """The silent case: a check that never ran must not read as "renew it tomorrow"."""
+    store_token(settings, age=timedelta(days=8), expiry_known=False)
+    mock_http.post(TOKEN_ENDPOINT).mock(side_effect=httpx.ConnectError("network down"))
+
+    code = main(["status", "--fail-on-reminder"])
+    assert code == 1  # a failure, as before
+    assert code != REMINDING
+
+
+def test_an_expired_authorization_is_not_the_reminder(settings, github, capsys):
+    """"It expired" and "it expires tomorrow" are two different jobs for you."""
+    store_token(settings, age=timedelta(days=7, hours=1))
+    code = main(["status", "--fail-on-reminder"])
+    assert code == 3  # authorization needed, as before
+    assert code != REMINDING
+
+
+def test_the_reminder_code_is_written_where_a_scheduled_task_reads_it():
+    """Whoever puts `status` in a scheduled task reads its --help, not this file."""
+    from ghti.cli import build_parser
+
+    status = build_parser()._subparsers._group_actions[0].choices["status"]
+    text = status.format_help()
+    assert str(REMINDING) in text, "`ghti status --help` never says the reminder code"
+    assert "not 1 on purpose" in text
+    assert str(REMINDING) in [line for line in text.splitlines() if "--fail-on-reminder" in line][-1]

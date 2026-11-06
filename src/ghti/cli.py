@@ -1,7 +1,10 @@
 """Command line: ghti demo | check | sync | backfill | auth-url | auth-finish | export-csv | schedule | status.
 
 Exit codes: 0 ok, 1 error, 2 configuration problem (or no command given),
-3 Google authorization needed.
+3 Google authorization needed. Two commands are alarms and say something that
+is not a failure, so they have codes of their own, outside those three:
+4 (`gaps`) some days are missing on intervals.icu, 5 (`status
+--fail-on-reminder`) the Google authorization needs renewing soon.
 """
 
 from __future__ import annotations
@@ -381,6 +384,22 @@ def cmd_gaps(args) -> int:
     return gaps_mod.FOUND if ranges else 0
 
 
+#: What `ghti status --fail-on-reminder` exits with when it is only reminding.
+#
+# Measured on 6 November 2026, with the flag on: the reminder of day 6 ("the
+# Google authorization expires tomorrow", authorization still alive) exited 1,
+# and a status that could not even ask Google (dead network) also exited 1. Two
+# opposite facts, one code: a scheduled task reading 1 could not tell "renew it
+# tomorrow" from "this check never ran".
+#
+# So the reminder gets a code of its own, outside the three the errors use
+# everywhere (1 any failure, 2 bad setup, 3 Google authorization needed) and
+# different from `gaps.FOUND` (4), which already means "days are missing". Any
+# non-zero still turns the GitHub run red and still sends the email, so
+# .github/workflows/reminder.yml keeps working exactly as before.
+REMINDING = 5
+
+
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
@@ -418,7 +437,7 @@ def cmd_status(args) -> int:
             f"Reminder: the Google authorization {'expires' if token.expiry_known else 'may expire'} {when}",
             f"It {word} on {expires} (in about {hours} hours). Renew it now and the sync will not stop." + guess,
         )
-        return 1 if args.fail_on_reminder else 0
+        return REMINDING if args.fail_on_reminder else 0
     write_summary(f"## Google authorization OK\n\nIt {word} on {expires} (in {hours} hours).")
     return 0
 
@@ -557,9 +576,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--days", type=int, default=30, help="used when neither --from nor a diary gap gives a start (default 30)")
     p.set_defaults(func=cmd_gaps)
 
-    p = sub.add_parser("status", help="show the last run and when the Google authorization expires")
+    p = sub.add_parser(
+        "status",
+        help="show the last run and when the Google authorization expires",
+        description="Show the last run from the diary and when the Google authorization expires."
+        " Exit codes: 0 all good (and 0 for the reminder too, unless --fail-on-reminder),"
+        f" {REMINDING} with --fail-on-reminder when it is only reminding you to renew,"
+        " 3 when the authorization has really expired, 1 when the check could not run"
+        " (network), 2 when a setting is missing."
+        f" {REMINDING} is not 1 on purpose: a scheduled task must not read a reminder about"
+        " tomorrow as a check that never happened.",
+    )
     p.add_argument("--remind-hours", type=float, default=36, help="remind when fewer hours are left (default 36)")
-    p.add_argument("--fail-on-reminder", action="store_true", help="exit with code 1 when reminding")
+    p.add_argument(
+        "--fail-on-reminder",
+        action="store_true",
+        help=f"exit with code {REMINDING} when reminding (a red GitHub run, so you get the email)",
+    )
     p.add_argument("--skip-if-unconfigured", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_status)
     return parser

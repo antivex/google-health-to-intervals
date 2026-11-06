@@ -58,7 +58,8 @@ def test_every_workflow_that_writes_state_takes_the_same_lock():
 
 
 def test_the_commit_step_runs_even_when_the_command_failed():
-    """`status --fail-on-reminder` exits 1 on purpose, and `sync` can fail halfway:
+    """`status --fail-on-reminder` exits non-zero on purpose (code 5), and `sync` can
+    fail halfway:
     the token it already refreshed still has to be saved."""
     for name, text in saving_workflows().items():
         if name == "reauth.yml":
