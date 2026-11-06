@@ -100,7 +100,8 @@ def test_status_the_next_morning_still_names_the_resume_day(breaks_on_window, ca
 
     from ghti.cli import main
 
-    assert main(["status"]) == 0
+    # PARTIAL, not 0: the days of the gap are still missing (tests/test_unfinished.py)
+    assert main(["status"]) == PARTIAL
 
     out = capsys.readouterr().out
     assert "FAILED" in out, out

@@ -449,6 +449,7 @@ everybody.
 | `note: <day>: <field> was sent as X and is saved as Y` | Saved, with another value: intervals.icu rounded it or something else wrote that field after us. Not a loss. |
 | `note: intervals.icu answered 200 but kept none of the N day(s) sent` | The write was accepted and nothing arrived. Almost always `INTERVALS_ATHLETE_ID` pointing at another athlete. |
 | `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it (exit `7`). Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. |
+| `... are still missing on intervals.icu` (under `ghti status`) | The same gap, seen the morning after: a later good run took the last line of the diary, but those days never arrived. Run the `ghti backfill` line printed under it; until then `status` keeps exiting `7`. |
 | `note: Google Health had no data at all for ...` | Not an error: Google has nothing recorded for those days (the watch was not connected yet). Ask for a recent period to see data. |
 | `note: Nothing before <day>` | Your history on Google starts on that day; earlier days are empty, so start the next backfill there. |
 
@@ -508,8 +509,10 @@ Error: intervals.icu error HTTP 500: ...
   Carry on from there with: ghti backfill --from 2026-07-05 --to 2026-10-22
 ```
 
-`ghti status` repeats those two lines, so an overnight run that broke while
-nobody was watching can still be picked up in the morning. When the very first
+`ghti status` repeats those two lines and answers `7` itself until the gap is
+really filled, so an overnight run that broke while nobody was watching can
+still be picked up in the morning - by a person reading the page or by a task
+reading the code. When the very first
 window is the one that fails, nothing was written and no `--from` is offered:
 running the same command again is the right move.
 
@@ -664,6 +667,7 @@ exit codes keep "you have something to do" apart from "this check never ran":
 | exit | what happened |
 |---|---|
 | `0` | the authorization is fine — and also when it reminds you, unless you pass `--fail-on-reminder` |
+| `7` | a run **stopped part-way** and those days are still missing: the lines above name the range and the `ghti backfill` that ends it |
 | `5` | with `--fail-on-reminder`: it is **only reminding** you, the authorization still works and expires soon |
 | `3` | the authorization has really expired or was revoked: authorize again |
 | `1` | the check could not run — network down, Google unreachable |
@@ -673,6 +677,25 @@ exit codes keep "you have something to do" apart from "this check never ran":
 so a task of yours reading 1 could not tell "renew it tomorrow" from "I never
 managed to ask". Any non-zero still turns the GitHub run red and still sends the
 email, so the **Reminder** workflow is unaffected.
+
+`7` is the same code the broken run exited with, and `status` keeps answering it
+until a run really fills the gap:
+
+```
+uv run ghti status
+Last sync: 2026-11-06 06:30 UTC (today), 3 day(s) sent.
+  A backfill stopped part-way on 2026-07-04 and was never finished:
+  2026-07-05 to 2026-11-06 are still missing on intervals.icu.
+  Finish it with: ghti backfill --from 2026-07-05 --to 2026-11-06
+  Until those days are on intervals.icu this status exits 7, the same code the
+  run itself exited with.
+```
+
+Those lines used to be written for the eyes only: `status` named the gap and
+then exited `0`, so a scheduled status check stayed green over three missing
+months. On GitHub the runner is new every time and the diary is always empty,
+so the **Reminder** workflow cannot see a gap and never goes red for one: the
+`7` is for the task on your own computer.
 
 A run that failed is written too, with the message you would have seen, and a
 run with `--dry-run` is not written at all. A long run that broke part-way also

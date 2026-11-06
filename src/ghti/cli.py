@@ -5,9 +5,11 @@ Exit codes: 0 ok, 1 error, 2 configuration problem (or no command given),
 would blur, so they have codes of their own, outside them: 4 (`gaps`) some
 days are missing on intervals.icu, 5 (`status --fail-on-reminder`) the Google
 authorization needs renewing soon, 6 (`check`) nothing is broken and a step of
-yours is simply not done yet, 7 (`sync`, `backfill`) the run stopped part-way
-and the days before the break are already written: carry on from the day the
-error names, do not start the range again.
+yours is simply not done yet, 7 (`sync`, `backfill`, `status`) the run stopped
+part-way and the days before the break are already written: carry on from the
+day the error names, do not start the range again. `status` keeps answering 7
+until those days are really on intervals.icu, so the gap is readable by the
+scheduled task too, not only by whoever happens to read the page.
 """
 
 from __future__ import annotations
@@ -415,14 +417,17 @@ REMINDING = 5
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
+    unfinished = None
     if not in_actions():
         # On GitHub the runner is new every time, so the diary is always empty there.
         runs = journal.read()
+        unfinished = journal.unfinished(runs=runs)
         print(
             journal.summary(
                 runs[-1] if runs else None,
                 setup_ok=not missing_settings(),
-                unfinished_run=journal.unfinished(runs=runs),
+                unfinished_run=unfinished,
+                partial_code=sync_mod.PARTIAL,
             )
         )
     settings = load_settings()
@@ -449,9 +454,13 @@ def cmd_status(args) -> int:
             f"Reminder: the Google authorization {'expires' if token.expiry_known else 'may expire'} {when}",
             f"It {word} on {expires} (in about {hours} hours). Renew it now and the sync will not stop." + guess,
         )
+        # A gap wins over the reminder: those days are already missing, while the
+        # authorization is about tomorrow and the text above says so either way.
+        if unfinished is not None:
+            return sync_mod.PARTIAL
         return REMINDING if args.fail_on_reminder else 0
     write_summary(f"## Google authorization OK\n\nIt {word} on {expires} (in {hours} hours).")
-    return 0
+    return sync_mod.PARTIAL if unfinished is not None else 0
 
 
 # --- where to start -------------------------------------------------------------
@@ -624,14 +633,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "status",
-        help="show the last run and when the Google authorization expires",
+        help=f"show the last run and when the Google authorization expires;"
+        f" exits {sync_mod.PARTIAL} while a part-way gap is still missing",
         description="Show the last run from the diary and when the Google authorization expires."
         " Exit codes: 0 all good (and 0 for the reminder too, unless --fail-on-reminder),"
+        f" {sync_mod.PARTIAL} while a run that stopped part-way has days still missing,"
         f" {REMINDING} with --fail-on-reminder when it is only reminding you to renew,"
         " 3 when the authorization has really expired, 1 when the check could not run"
         " (network), 2 when a setting is missing."
         f" {REMINDING} is not 1 on purpose: a scheduled task must not read a reminder about"
-        " tomorrow as a check that never happened.",
+        " tomorrow as a check that never happened."
+        f" The {sync_mod.PARTIAL} is the same code the broken run exited with, and it stays"
+        " until a run really fills the gap: a green status over missing months is the"
+        " one answer this command must never give.",
     )
     p.add_argument("--remind-hours", type=float, default=36, help="remind when fewer hours are left (default 36)")
     p.add_argument(

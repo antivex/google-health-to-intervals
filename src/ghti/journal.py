@@ -219,12 +219,28 @@ def gap_text(run: Run) -> list[str]:
     ]
 
 
+def code_text(code: int) -> str:
+    """The one line that ties this status to the code a scheduled task reads.
+
+    Measured on 6 November 2026: the gap line was written for the eyes only.
+    `ghti status` named the missing range and the command that ends it, and
+    then exited 0, so a scheduled status check stayed green while months were
+    missing - and nothing on the page connected the line to the `7` the broken
+    run had exited with.
+    """
+    return (
+        f"  Until those days are on intervals.icu this status exits {code},"
+        " the same code the run itself exited with."
+    )
+
+
 def summary(
     run: Run | None,
     now: datetime | None = None,
     schedule_hint: bool = True,
     setup_ok: bool = True,
     unfinished_run: Run | None = None,
+    partial_code: int | None = None,
 ) -> str:
     """What to print under `ghti status`: the last run, in two lines at most.
 
@@ -265,6 +281,11 @@ def summary(
     # The broken run says it itself, in its own error text: repeating it here
     # would print the same gap twice. The point of this line is the morning
     # after, when a successful run has taken its place as the last line.
-    if unfinished_run is not None and unfinished_run != run and unfinished_run.gap:
-        lines += gap_text(unfinished_run)
+    if unfinished_run is not None and unfinished_run.gap:
+        if unfinished_run != run:
+            lines += gap_text(unfinished_run)
+        # `partial_code` is passed only by `ghti status`, which is the command
+        # that exits with it: the diary itself knows nothing about exit codes.
+        if partial_code is not None:
+            lines.append(code_text(partial_code))
     return "\n".join(lines)
