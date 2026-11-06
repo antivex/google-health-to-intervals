@@ -438,6 +438,12 @@ uv run ghti status                        # the last run, and when the authoriza
 uv run ghti schedule                      # the daily task, written out (installs nothing)
 ```
 
+A long range (a backfill of a year, say) is read and written **90 days at a
+time**, and each window is sent to intervals.icu before the next one is read,
+so an interruption halfway keeps the days already written: run the same command
+again and it overwrites them with the same values. The windows meet exactly, so
+no day falls between two of them.
+
 On a computer the encrypted token is saved in the same configuration folder.
 
 ### Let it run every day on its own

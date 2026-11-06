@@ -75,6 +75,8 @@ class SyncReport:
 
 
 def windows(start: date, end: date, size: int = WINDOW_DAYS) -> Iterator[tuple[date, date]]:
+    if size < 1:  # a belt: a size of 0 or less would never advance, and a run would hang forever
+        raise ValueError(f"A window must be at least one day long, not {size}.")
     while start <= end:
         stop = min(end, start + timedelta(days=size - 1))
         yield start, stop
