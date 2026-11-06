@@ -183,3 +183,38 @@ def _sleep_metric():
     from ghti.mapping import METRICS
 
     return next(m for m in METRICS if m.name == "sleep")
+
+
+# --- the whole command, not only the gate -----------------------------------
+
+
+def test_a_broken_weigh_in_leaves_the_rest_of_the_day_alone(settings, mock_http, capsys):
+    """One scale sending 2,000 kg: the day still goes, without that field, and
+    the command says so instead of writing a point no chart can survive."""
+    import httpx
+    from conftest import DT, INTERVALS_PUT, mock_google, mock_refresh, put_bodies, store_token
+    from ghti.cli import main
+
+    store_token(settings)
+    mock_refresh(mock_http)
+    broken = {
+        "dataPoints": [
+            {
+                "weight": {
+                    "weightGrams": 2_000_000,
+                    "sampleTime": {"civilTime": {"date": {"year": 2026, "month": 10, "day": 21}}},
+                }
+            }
+        ]
+    }
+    mock_google(mock_http, {f"{DT}/weight/dataPoints": httpx.Response(200, json=broken)})
+    put = mock_http.put(INTERVALS_PUT).mock(return_value=httpx.Response(200))
+
+    assert main(["sync"]) == 0
+
+    sent = put_bodies(put)[0]
+    day = next(r for r in sent if r["id"] == "2026-10-21")
+    assert "weight" not in day
+    assert day["restingHR"] == 52 and day["sleepSecs"] == 25200
+    out = capsys.readouterr().out
+    assert "2026-10-21: weight" in out and "not sent" in out
