@@ -397,6 +397,8 @@ everybody.
 | `Too many intervals.icu requests in one run` | A backfill that is too long. Split it with `--from` / `--to` into shorter ranges. |
 | `intervals.icu error HTTP 500: ...` (or any other code) | A problem on the intervals.icu side. Nothing to fix: the next run tries again. |
 | `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it. Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. |
+| `note: Google Health had no data at all for ...` | Not an error: Google has nothing recorded for those days (the watch was not connected yet). Ask for a recent period to see data. |
+| `note: Nothing before <day>` | Your history on Google starts on that day; earlier days are empty, so start the next backfill there. |
 
 ### Command arguments
 
@@ -457,6 +459,26 @@ Error: intervals.icu error HTTP 500: ...
 nobody was watching can still be picked up in the morning. When the very first
 window is the one that fails, nothing was written and no `--from` is offered:
 running the same command again is the right move.
+
+#### How far back your history goes
+
+Google keeps your data from the day it was recorded and sets no limit on how
+far back an application may ask, so a backfill that starts before your first
+recorded day is a legal request that simply reads empty days. The run says so
+instead of leaving you with a count of zero:
+
+```
+Sent 0 day(s) to intervals.icu (2019-01-01 to 2019-03-31).
+  note: Google Health had no data at all for 2019-01-01 to 2019-03-31. Your history
+  there starts the day the data was first recorded, so these days are empty on
+  Google: nothing was sent and nothing is broken here.
+```
+
+When only the start of the range is empty, the run names the first day you do
+have (`Nothing before 2026-10-13: your history on Google Health starts there`),
+so the next backfill can start on that day instead of paying for empty
+requests. A missing permission or a metric that failed is reported as itself,
+never as an empty history.
 
 On a computer the encrypted token is saved in the same configuration folder.
 
