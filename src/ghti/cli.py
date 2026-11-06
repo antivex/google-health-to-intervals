@@ -142,20 +142,24 @@ def _run_and_record(
             report = run_sync(settings, start, end, http, dry_run=dry_run, confirm=confirm)
     except GhtiError as error:
         if not dry_run:
-            journal.append(
-                journal.failure(
-                    str(error),
-                    command=command,
-                    start=start,
-                    end=end,
-                    # A break part-way carries these; any other failure wrote nothing.
-                    sent=getattr(error, "written", 0),
-                    resume_from=getattr(error, "resume_from", None),
-                )
+            line = journal.failure(
+                str(error),
+                command=command,
+                start=start,
+                end=end,
+                # A break part-way carries these; any other failure wrote nothing.
+                sent=getattr(error, "written", 0),
+                resume_from=getattr(error, "resume_from", None),
             )
+            journal.append(line)
+            # The diary stays on this machine; in the cloud the machine is new
+            # every time. The note next to the token is what the next run reads.
+            journal.note_gap(line)
         raise
     if not dry_run:
-        journal.append(journal.from_report(report, command=command))
+        line = journal.from_report(report, command=command)
+        journal.append(line)
+        journal.note_gap(line)
     return report
 
 # --- commands ------------------------------------------------------------------
@@ -415,14 +419,32 @@ def cmd_gaps(args) -> int:
 REMINDING = 5
 
 
+def _gap_summary(gap) -> None:
+    """The run page of a check that found a gap still open.
+
+    A red run is how this bridge reaches an inbox at all (see the note at the top
+    of .github/workflows/reminder.yml). Before 6 November 2026 that page said
+    "Google authorization OK" while three months were missing, so the daily email
+    never mentioned the gap: the only page that ever named it was the one of the
+    run that broke, months earlier, seen once.
+    """
+    command = f"ghti backfill --from {gap.resume_from} --to {gap.through}"
+    write_summary(resume_instructions(str(gap.resume_from), command))
+
+
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
+    # The gap is read from the note next to the token, which the workflows commit:
+    # on GitHub the runner is new every time and the diary is always empty there,
+    # so until 6 November 2026 a cloud `status` exited 0 over three missing months.
+    gap = journal.read_gap()
     unfinished = None
     if not in_actions():
-        # On GitHub the runner is new every time, so the diary is always empty there.
         runs = journal.read()
         unfinished = journal.unfinished(runs=runs)
+        if unfinished is not None and unfinished.gap is not None:
+            gap = journal.Gap(*unfinished.gap, seen_at=unfinished.at)
         print(
             journal.summary(
                 runs[-1] if runs else None,
@@ -430,6 +452,11 @@ def cmd_status(args) -> int:
                 unfinished_run=unfinished,
                 partial_code=sync_mod.PARTIAL,
             )
+        )
+    elif gap is not None:
+        print(
+            f"{gap.days} day(s) are still missing on intervals.icu, from {gap.resume_from}"
+            f" to {gap.through}: a run stopped part-way and nothing filled the gap since."
         )
     settings = load_settings()
     token = TokenStore(settings.token_file, _keys(settings)).load()
@@ -457,11 +484,15 @@ def cmd_status(args) -> int:
         )
         # A gap wins over the reminder: those days are already missing, while the
         # authorization is about tomorrow and the text above says so either way.
-        if unfinished is not None:
+        if gap is not None:
+            _gap_summary(gap)
             return sync_mod.PARTIAL
         return REMINDING if args.fail_on_reminder else 0
+    if gap is not None:
+        _gap_summary(gap)
+        return sync_mod.PARTIAL
     write_summary(f"## Google authorization OK\n\nIt {word} on {expires} (in {hours} hours).")
-    return sync_mod.PARTIAL if unfinished is not None else 0
+    return 0
 
 
 # --- where to start -------------------------------------------------------------

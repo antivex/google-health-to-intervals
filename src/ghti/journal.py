@@ -20,6 +20,7 @@ from ghti import config
 from ghti.config import config_dir, raw_values
 
 KEEP = 200  # lines kept in the file; older runs are dropped
+GAP_NAME = "gap.json"  # the open gap, kept next to the token so the cloud remembers it
 STALE_AFTER = timedelta(days=2)  # after this, say that the daily run may be stopped
 
 
@@ -27,6 +28,104 @@ def journal_file() -> Path:
     """Where the diary lives (GHTI_JOURNAL_FILE wins, as for the token file)."""
     override = raw_values().get("GHTI_JOURNAL_FILE", "").strip()
     return Path(override) if override else config_dir() / "runs.jsonl"
+
+
+def gap_file() -> Path:
+    """Where the open gap is written down (GHTI_GAP_FILE wins).
+
+    The diary lives on the machine that ran the sync. In the cloud that machine
+    is new every time, so a gap left by last night's sync was invisible to the
+    next run: measured on 6 November 2026, `ghti status` with GITHUB_ACTIONS=true
+    exited **0** over a 110-day gap the same diary showed as open on a PC, and the
+    run page read "Google authorization OK". The daily Reminder run - the one
+    .github/workflows/reminder.yml turns red on purpose to send an email - went
+    green over three missing months.
+
+    So the gap is kept as *state*, not as diary: next to the encrypted token, the
+    one directory the workflows already commit, where it outlives the runner.
+
+    Only dates go in it. That file is committed to the buyer's own repository,
+    which may be public: no counts, no metric names, no error text.
+    """
+    override = raw_values().get("GHTI_GAP_FILE", "").strip()
+    if override:
+        return Path(override)
+    token = raw_values().get("GHTI_TOKEN_FILE", "").strip()
+    return (Path(token).parent if token else config_dir()) / GAP_NAME
+
+
+@dataclass(frozen=True)
+class Gap:
+    """Days a run was asked for and never wrote, still missing."""
+
+    resume_from: date
+    through: date
+    seen_at: datetime | None = None
+
+    @property
+    def days(self) -> int:
+        return (self.through - self.resume_from).days + 1
+
+    @property
+    def range(self) -> tuple[date, date]:
+        return self.resume_from, self.through
+
+
+def read_gap(path: Path | None = None) -> Gap | None:
+    """The gap written down, or None. An unreadable note is no note, never a crash."""
+    path = path or gap_file()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        start = date.fromisoformat(data["resume_from"])
+        through = date.fromisoformat(data["through"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if start > through:
+        return None
+    seen = data.get("seen_at")
+    try:
+        at = datetime.fromisoformat(seen) if isinstance(seen, str) and seen else None
+    except ValueError:
+        at = None
+    return Gap(resume_from=start, through=through, seen_at=at)
+
+
+def write_gap(gap: Gap | None, path: Path | None = None) -> Path:
+    """Write the note, or delete it when there is no gap left. Never raises."""
+    path = path or gap_file()
+    try:
+        if gap is None:
+            path.unlink(missing_ok=True)
+            return path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = {
+            "resume_from": gap.resume_from.isoformat(),
+            "through": gap.through.isoformat(),
+            "seen_at": (gap.seen_at or config.utcnow()).astimezone(UTC).isoformat(timespec="seconds"),
+        }
+        path.write_text(json.dumps(body, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return path
+
+
+def note_gap(run: Run, path: Path | None = None) -> Gap | None:
+    """Keep the note in step with the run just written to the diary.
+
+    A run that broke part-way writes the note; a later run that covered the
+    whole gap removes it. Anything else leaves it alone: a plain failure in
+    between must not make the missing months disappear.
+    """
+    gap = run.gap
+    if gap is not None:
+        note = Gap(resume_from=gap[0], through=gap[1], seen_at=run.at)
+        write_gap(note, path)
+        return note
+    open_now = read_gap(path)
+    if open_now is not None and run.covers(open_now.range):
+        write_gap(None, path)
+        return None
+    return open_now
 
 
 @dataclass(frozen=True)

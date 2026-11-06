@@ -51,7 +51,7 @@ jobs:
             uv run --frozen ghti sync --days "$DAYS" --skip-if-unconfigured
           fi
 
-      - name: Save the encrypted token if it changed
+      - name: Save what the run left in state/ (token, open gap)
         if: always()
         run: |
           git add -A state
@@ -61,6 +61,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Update encrypted Google token"
+          git commit -m "Update sync state (token, open gap)"
           git pull --rebase --quiet
           git push

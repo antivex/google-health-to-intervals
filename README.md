@@ -700,9 +700,18 @@ Last sync: 2026-11-06 06:30 UTC (today), 3 day(s) sent.
 
 Those lines used to be written for the eyes only: `status` named the gap and
 then exited `0`, so a scheduled status check stayed green over three missing
-months. On GitHub the runner is new every time and the diary is always empty,
-so the **Reminder** workflow cannot see a gap and never goes red for one: the
-`7` is for the task on your own computer.
+months.
+
+On GitHub the runner is new every time, so the diary is always empty there. The
+open gap is kept separately, as two dates in `state/gap.json`, written next to
+the encrypted token and committed by the same step: that way the **Reminder**
+workflow sees it the next morning, answers `7`, and its run page opens with
+**Stopped part-way** and the way out instead of "Google authorization OK". Since
+that run turns red on purpose to send you an email, the gap now reaches your
+inbox every day until it is filled, and not only in the one *Sync* run that
+broke. The note holds the two dates and the time it was taken, nothing else — it
+lives in your repository, which may be public — and it is deleted by the run
+that finally writes those days.
 
 A run that failed is written too, with the message you would have seen, and a
 run with `--dry-run` is not written at all. A long run that broke part-way also

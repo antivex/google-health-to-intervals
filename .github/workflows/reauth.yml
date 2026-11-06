@@ -53,7 +53,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Save new encrypted Google token"
+          git commit -m "Update sync state (token, open gap)"
           git pull --rebase --quiet
           git push
 
