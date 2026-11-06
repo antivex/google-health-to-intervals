@@ -25,11 +25,24 @@
 # rebased onto it (no conflict to resolve with nobody there, and a push that
 # simply lost a race is retried), and when it still cannot be saved the run page
 # says which days are missing and how to close them, instead of a git error.
+#
+# Replaying means `git reset --hard origin/<branch>`, which moves the whole
+# working tree, not only state/. Measured the same day, in the same sandbox,
+# with a commit waiting on the branch: after the retry the runner holds the
+# BRANCH's source files, while `GITHUB_SHA` on the run page still names the
+# commit the job checked out. Three of the four workflows save state/ as their
+# last step, so nothing of theirs runs on the swapped tree; `reauth.yml` had a
+# step after it (`ghti sync`, the catch-up of the missed days), which would have
+# run code the run page does not name. So the runner is put back on the commit
+# it checked out as soon as the push is through, with the fresh state/ on top:
+# the remote keeps the new commit, the job keeps its own code.
 set -uo pipefail
 
 branch="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
 attempts="${GHTI_SAVE_ATTEMPTS:-3}"
 message="${1:-Update sync state (token, open gap)}"
+#: The commit this job checked out. Later steps must keep running its code.
+checked_out="$(git rev-parse HEAD)"
 
 git add -A state
 if git diff --cached --quiet; then
@@ -64,6 +77,15 @@ for attempt in $(seq 1 "$attempts"); do
   fi
   if git push --quiet origin "HEAD:$branch"; then
     echo "Saved in state/ on $branch (push $attempt of $attempts)."
+    if [ "$(git rev-parse HEAD^)" != "$checked_out" ]; then
+      # The replay moved the tree onto the branch. The remote has the commit now;
+      # give this job back the code it checked out, with the fresh state/ on top.
+      git reset --quiet --hard "$checked_out"
+      rm -rf state
+      mkdir -p state
+      cp -R "$keep"/. state/
+      echo "Runner put back on the commit it checked out ($(git rev-parse --short HEAD))."
+    fi
     exit 0
   fi
   echo "Push $attempt of $attempts did not go through."

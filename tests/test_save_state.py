@@ -188,3 +188,36 @@ def test_losing_the_note_puts_the_silence_back(broke_halfway, settings, mock_htt
 
     assert code == 0, "measured: it exits 0 over the missing months"
     assert "Google authorization OK" in github.read_text(encoding="utf-8")
+
+
+@needs_bash
+def test_a_retry_leaves_the_job_on_the_code_it_checked_out(sandbox):
+    """Replaying state/ means `reset --hard origin/<branch>`: the WHOLE tree moves.
+
+    Measured on 6 November 2026: after a retry the runner held the branch's
+    source files while the run page still named the checked-out commit. Three
+    workflows save state/ as their last step, so nothing of theirs runs on the
+    swapped tree, but `reauth.yml` runs the catch-up `ghti sync` after it - that
+    sync must be the code this job checked out, not whatever landed meanwhile.
+    """
+    remote, runner, other = sandbox
+    (runner / "VERSION.txt").write_text("the commit the job checked out\n", encoding="utf-8")
+    git("add", "-A", cwd=runner)
+    git("commit", "--quiet", "-m", "the code of this run", cwd=runner)
+    git("push", "--quiet", "origin", "HEAD:main", cwd=runner)
+    checked_out = git("rev-parse", "HEAD", cwd=runner)
+
+    git("pull", "--quiet", cwd=other)
+    (other / "VERSION.txt").write_text("a newer commit on the branch\n", encoding="utf-8")
+    git("add", "-A", cwd=other)
+    git("commit", "--quiet", "-m", "the buyer edits the code on main", cwd=other)
+    git("push", "--quiet", cwd=other)
+
+    (runner / "state" / "gap.json").write_text(NOTE, encoding="utf-8")
+    code, out = save(runner)
+
+    assert code == 0, out
+    assert "2026-07-05" in on_the_remote(remote), "the note still has to reach the remote"
+    assert git("rev-parse", "HEAD", cwd=runner) == checked_out, "the job must keep its own commit"
+    assert (runner / "VERSION.txt").read_text(encoding="utf-8").strip() == "the commit the job checked out"
+    assert (runner / "state" / "gap.json").read_text(encoding="utf-8") == NOTE, "and the fresh state/ on top"

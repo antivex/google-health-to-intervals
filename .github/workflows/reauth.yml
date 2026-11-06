@@ -52,3 +52,11 @@ jobs:
         env:
           DAYS: ${{ vars.GHTI_CATCH_UP_DAYS || '14' }}
         run: uv run --frozen ghti sync --days "$DAYS"
+
+      # That catch-up is a sync like any other: it can stop part-way and write
+      # the note of the gap it left, and it can receive a new refresh token.
+      # Without this step both stay on the runner and die with it - the note of
+      # a gap nobody will name again.
+      - name: Save what the catch-up sync left in state/ (token, open gap)
+        if: always() && inputs.redirect_url != ''
+        run: bash .github/save-state.sh "Save what the catch-up sync left (token, open gap)"

@@ -88,3 +88,17 @@ def test_the_commands_the_workflows_call_still_exist():
         for command in SAVES_THE_TOKEN:
             if f"ghti {command}" in text:
                 assert command in help_text, f"{name} calls `ghti {command}`, the CLI has no such command"
+
+
+def test_reauth_saves_state_after_the_catch_up_sync_too():
+    """The catch-up sync runs AFTER the token is saved, and it is a sync like any
+    other: it can stop part-way and write the note of the gap it left, and Google
+    can hand it a new refresh token. Without a save after it, both stay on the
+    runner and die with it."""
+    text = workflows()["reauth.yml"]
+    sync = text.index("ghti sync")
+    saves = [i for i in range(len(text)) if text.startswith(SAVE_STEP, i)]
+    assert any(i > sync for i in saves), "reauth.yml never saves state/ after the catch-up sync"
+    assert "if: always() && inputs.redirect_url != ''" in text, (
+        "the save after the catch-up sync must run even when that sync failed"
+    )
