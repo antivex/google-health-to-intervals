@@ -27,6 +27,7 @@ import pytest
 
 from conftest import INTERVALS_PUT, mock_refresh, store_token
 from ghti import journal
+from ghti.sync import PARTIAL
 from test_long_range import LONG_DAYS, TODAY, _mock_everything
 
 FIRST_WINDOW_END = date(2026, 7, 4)  # 90 days from 2026-04-06
@@ -47,7 +48,7 @@ def broke_halfway(settings, mock_http, capsys):
         )
         from ghti.cli import main
 
-        assert main(["sync", "--days", str(LONG_DAYS)]) == 1
+        assert main(["sync", "--days", str(LONG_DAYS)]) == PARTIAL
         capsys.readouterr()
 
     return arrange
@@ -113,7 +114,7 @@ def test_a_failure_that_wrote_nothing_has_no_resume_day(settings, mock_http, cap
     mock_http.put(INTERVALS_PUT).mock(return_value=httpx.Response(400, json={"error": "bad day"}))
     from ghti.cli import main
 
-    assert main(["sync", "--days", str(LONG_DAYS)]) == 1
+    assert main(["sync", "--days", str(LONG_DAYS)]) == 1  # nothing landed: not PARTIAL
     capsys.readouterr()
 
     line = diary_lines()[-1]
@@ -207,6 +208,7 @@ def test_a_later_failure_does_not_count_as_filling_the_gap(broke_halfway, settin
     mock_http.put(INTERVALS_PUT).mock(return_value=httpx.Response(400, json={"error": "bad day"}))
     from ghti.cli import main
 
+    # this second run writes nothing of its own, so it is 1, not PARTIAL
     assert main(["backfill", "--from", RESUME_FROM.isoformat(), "--to", TODAY.isoformat()]) == 1
     capsys.readouterr()
 
@@ -224,7 +226,7 @@ def test_the_newest_break_is_the_one_reported(broke_halfway, settings, mock_http
     )
     from ghti.cli import main
 
-    assert main(["backfill", "--from", RESUME_FROM.isoformat(), "--to", TODAY.isoformat()]) == 1
+    assert main(["backfill", "--from", RESUME_FROM.isoformat(), "--to", TODAY.isoformat()]) == PARTIAL
     capsys.readouterr()
 
     run = journal.unfinished()

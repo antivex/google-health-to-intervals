@@ -1,11 +1,13 @@
 """Command line: ghti demo | check | sync | backfill | auth-url | auth-finish | export-csv | schedule | status.
 
 Exit codes: 0 ok, 1 error, 2 configuration problem (or no command given),
-3 Google authorization needed. Three commands say something that is not a
-failure, so they have codes of their own, outside those three: 4 (`gaps`) some
+3 Google authorization needed. Four commands say something that those three
+would blur, so they have codes of their own, outside them: 4 (`gaps`) some
 days are missing on intervals.icu, 5 (`status --fail-on-reminder`) the Google
 authorization needs renewing soon, 6 (`check`) nothing is broken and a step of
-yours is simply not done yet.
+yours is simply not done yet, 7 (`sync`, `backfill`) the run stopped part-way
+and the days before the break are already written: carry on from the day the
+error names, do not start the range again.
 """
 
 from __future__ import annotations
@@ -66,6 +68,7 @@ from ghti.schedule import build as build_schedule
 from ghti.schedule import other_platforms
 from ghti.schedule import text as schedule_text
 from ghti.mapping import merge, to_wellness_records
+from ghti import sync as sync_mod
 from ghti.sync import SyncReport, export_csv, run_sync
 from ghti import gaps as gaps_mod
 from ghti.intervals import IntervalsClient
@@ -530,7 +533,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("sync", help="copy the last N days (default 3); safe to repeat")
+    p = sub.add_parser(
+        "sync",
+        help="copy the last N days (default 3); safe to repeat;"
+        f" exits {sync_mod.PARTIAL} when it stopped part-way, with the day to carry on from",
+        description="Copy the last N days from Google Health to intervals.icu. Safe to repeat:"
+        " the same days always produce the same records."
+        f" Exit codes, for a scheduled task: 0 done, {sync_mod.PARTIAL} the run stopped part-way"
+        " and the days up to the day named in the error are already on intervals.icu (carry on"
+        " with the printed `ghti backfill --from ...`, do not start the range again), 1/2/3 it"
+        " wrote nothing at all, so running the same command again is the right move."
+        f" {sync_mod.PARTIAL} is not 1 on purpose: a run that landed half the range must not read"
+        " like a run that landed none of it.",
+    )
     p.add_argument("--days", type=int, default=3)
     p.add_argument("--dry-run", action="store_true", help="read from Google but do not write to intervals.icu")
     p.add_argument(
@@ -543,7 +558,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--skip-if-unconfigured", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_sync)
 
-    p = sub.add_parser("backfill", help="copy a past period")
+    p = sub.add_parser(
+        "backfill",
+        help="copy a past period, 90 days at a time;"
+        f" exits {sync_mod.PARTIAL} when it stopped part-way, with the day to carry on from",
+        description="Copy a past period, 90 days at a time, writing each window before reading"
+        " the next one."
+        f" Exit codes: the same as `sync` - in particular {sync_mod.PARTIAL} when the run stopped"
+        " part-way, which matters most here: a long range that broke must be carried on from the"
+        " day the error names, not asked of Google all over again.",
+    )
     p.add_argument("--from", dest="start", type=_day, required=True, metavar="YYYY-MM-DD")
     p.add_argument("--to", type=_day, metavar="YYYY-MM-DD", help="default: today")
     p.add_argument("--dry-run", action="store_true")

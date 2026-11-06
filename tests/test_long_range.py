@@ -24,7 +24,7 @@ import pytest
 
 from conftest import DT, GOOGLE, GOOGLE_ROUTES, INTERVALS_PUT, mock_google, mock_refresh, put_bodies, store_token
 from ghti.cli import main
-from ghti.sync import WINDOW_DAYS, windows
+from ghti.sync import PARTIAL, WINDOW_DAYS, windows
 
 ROME = ZoneInfo("Europe/Rome")
 SLEEP_PATH = f"{DT}/sleep/dataPoints:reconcile"
@@ -210,7 +210,7 @@ def test_a_failure_on_the_second_window_keeps_the_first_and_says_so(settings, mo
 
     code = main(["sync", "--days", str(LONG_DAYS)])
 
-    assert code == 1
+    assert code == PARTIAL  # not 1: the first window is written, and the error says where to carry on
     assert len(put.calls) == 2  # it stopped at the window that failed
     assert [len(body) for body in put_bodies(put)] == [90, 90]
     error = capsys.readouterr().err

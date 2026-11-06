@@ -448,7 +448,7 @@ everybody.
 | `note: <day>: <field> was sent but is not saved` | The day is there, that field is not: usually a locked wellness record on intervals.icu, or a field your account does not keep. |
 | `note: <day>: <field> was sent as X and is saved as Y` | Saved, with another value: intervals.icu rounded it or something else wrote that field after us. Not a loss. |
 | `note: intervals.icu answered 200 but kept none of the N day(s) sent` | The write was accepted and nothing arrived. Almost always `INTERVALS_ATHLETE_ID` pointing at another athlete. |
-| `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it. Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. |
+| `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it (exit `7`). Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. |
 | `note: Google Health had no data at all for ...` | Not an error: Google has nothing recorded for those days (the watch was not connected yet). Ask for a recent period to see data. |
 | `note: Nothing before <day>` | Your history on Google starts on that day; earlier days are empty, so start the next backfill there. |
 
@@ -512,6 +512,23 @@ Error: intervals.icu error HTTP 500: ...
 nobody was watching can still be picked up in the morning. When the very first
 window is the one that fails, nothing was written and no `--from` is offered:
 running the same command again is the right move.
+
+A scheduled run reads the exit code, not the text, so the two cases do not share
+one:
+
+| exit | what happened |
+|---|---|
+| `0` | the whole range is on intervals.icu |
+| `7` | it stopped part-way: the days up to the day named in the error **are** written. Carry on with the `ghti backfill --from ...` printed under it; starting the range again only asks Google for months it already sent |
+| `1` / `2` / `3` | it wrote nothing at all (`1` a failure, `2` a setting, `3` Google authorization): run the same command again once the cause is fixed |
+
+`7` is deliberately not `1`: a 200-day run that wrote 90 days and a run that
+wrote none of them both exited `1`, so a task of yours could not tell them
+apart, and the cheap mistake was the expensive one — asking Google for months it
+had already copied while the real gap stayed missing. An authorization that
+expires halfway also exits `7`, not `3`: the link is still printed, and the range
+still has to be finished. The **Sync** workflow is unaffected: any non-zero
+still turns the run red.
 
 The gap is not forgotten when the next morning goes well, either. A daily sync
 writes the last three days, not the missing months, so `status` keeps naming the

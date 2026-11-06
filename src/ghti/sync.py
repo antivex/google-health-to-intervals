@@ -25,6 +25,26 @@ from ghti.oauth import StoredToken, TokenStore, refresh_access_token
 
 WINDOW_DAYS = 90  # long ranges are processed (and pushed) 90 days at a time
 
+# What a scheduled `sync`/`backfill` used to say, measured on 6 November 2026:
+#
+#   a 200-day run whose second window is refused (90 days written)  -> 1
+#   the first window refused, nothing written at all                -> 1
+#   a dead network before anything was sent                         -> 1
+#
+# Three different mornings, one code. The text already separates them - a break
+# part-way prints the day it reached and the `backfill --from` that carries on -
+# but a scheduled task reads the code, and a red GitHub run shows nothing else.
+# Taking "90 days landed, 110 did not" for "nothing was written" is the costly
+# way round: re-running a backfill of a year asks Google for months it already
+# has, and the missing months stay missing until somebody reads the log.
+#
+# So a run that stopped part-way gets a code of its own, whatever broke it. It is
+# outside the three the errors use everywhere (1 any failure, 2 bad setup, 3
+# Google authorization needed) and outside `gaps.FOUND` (4), `cli.REMINDING` (5)
+# and `check.WAITING` (6). A run that wrote nothing keeps its own code, unchanged:
+# there the right move is still to run the same command again.
+PARTIAL = 7
+
 
 @dataclass
 class SyncReport:
@@ -93,7 +113,7 @@ class SyncInterrupted(GhtiError):
         self.cause = cause
         self.done_through = done_through  # last day we know is on intervals.icu
         self.resume_from = done_through + timedelta(days=1)
-        self.exit_code = getattr(cause, "exit_code", 1)
+        self.exit_code = PARTIAL  # not the cause's code: "part of it landed" is its own answer
         super().__init__(resume_text(cause, done_through, end, written))
 
 
@@ -288,7 +308,10 @@ def _interrupted(error: Exception, done_through: date, end: date, report: SyncRe
     """Turn a break halfway into an error that says where to carry on from.
 
     An expired authorization keeps its own class, so the CLI still shows the
-    authorization link instead of a bare error; it only gains the resume line.
+    authorization link instead of a bare error; it gains the resume line and,
+    like any other break part-way, the `PARTIAL` code: the authorization has to
+    be renewed *and* the range finished, which is one action more than the 3 of
+    a run that wrote nothing.
 
     The three numbers of the break are also attached to the exception, not only
     written into its text: the diary needs them as fields (how many days really
@@ -298,6 +321,7 @@ def _interrupted(error: Exception, done_through: date, end: date, report: SyncRe
     written = report.records_sent
     if isinstance(error, AuthRequired):
         out: GhtiError = AuthRequired(resume_text(error, done_through, end, written))
+        out.exit_code = PARTIAL  # the class attribute is 3; the instance says "part-way"
     else:
         out = SyncInterrupted(error, done_through, end, written)
     out.done_through = done_through

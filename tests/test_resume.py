@@ -22,6 +22,7 @@ import httpx
 import pytest
 
 from conftest import INTERVALS_PUT, mock_refresh, put_bodies, store_token
+from ghti.sync import PARTIAL
 from test_long_range import FIRST_DAY, LONG_DAYS, TODAY, _mock_everything
 
 FIRST_WINDOW_END = date(2026, 7, 4)  # 90 days from 2026-04-06
@@ -46,7 +47,7 @@ def breaks_on_window(settings, mock_http):
 def test_the_error_names_the_last_written_day_and_the_command_to_resume(breaks_on_window, capsys):
     put = breaks_on_window(2)
 
-    assert main_sync() == 1
+    assert main_sync() == PARTIAL
 
     assert [len(body) for body in put_bodies(put)] == [90, 90]  # the second push was refused
     error = capsys.readouterr().err
@@ -58,7 +59,7 @@ def test_the_error_names_the_last_written_day_and_the_command_to_resume(breaks_o
 def test_the_error_counts_the_days_already_on_intervals(breaks_on_window, capsys):
     breaks_on_window(2)
 
-    assert main_sync() == 1
+    assert main_sync() == PARTIAL
 
     error = capsys.readouterr().err
     assert "90 day(s)" in error, error
@@ -70,7 +71,7 @@ def test_a_later_break_names_the_later_day(breaks_on_window, capsys):
     """The third window: two windows are written, so the resume day moves on."""
     put = breaks_on_window(3)
 
-    assert main_sync() == 1
+    assert main_sync() == PARTIAL
 
     assert [len(body) for body in put_bodies(put)] == [90, 90, 20]
     error = capsys.readouterr().err
@@ -83,7 +84,7 @@ def test_nothing_written_promises_no_resume(breaks_on_window, capsys):
     """The first window fails: there is no safe `--from`, so none is offered."""
     put = breaks_on_window(1)
 
-    assert main_sync() == 1
+    assert main_sync() == 1  # nothing landed: the cause's own code, not PARTIAL
 
     assert put_bodies(put) == [] or [len(b) for b in put_bodies(put)] == [90]
     error = capsys.readouterr().err
@@ -94,7 +95,7 @@ def test_nothing_written_promises_no_resume(breaks_on_window, capsys):
 def test_status_the_next_morning_still_names_the_resume_day(breaks_on_window, capsys):
     """A scheduled run breaks at night; the diary is where the buyer looks."""
     breaks_on_window(2)
-    assert main_sync() == 1
+    assert main_sync() == PARTIAL
     capsys.readouterr()
 
     from ghti.cli import main
@@ -142,7 +143,7 @@ def test_a_dropped_connection_halfway_also_says_where_to_carry_on(settings, mock
     _mock_everything(mock_http)
     mock_http.put(INTERVALS_PUT).mock(side_effect=[httpx.Response(200), httpx.ConnectError("connection lost")])
 
-    assert main_sync() == 1
+    assert main_sync() == PARTIAL
 
     error = capsys.readouterr().err
     assert "ConnectError" in error, error  # the cause is still named
@@ -187,10 +188,65 @@ def test_empty_days_still_count_as_done(settings, mock_http, capsys):
     )
     put = mock_http.put(INTERVALS_PUT).mock(return_value=httpx.Response(200))
 
-    assert main_sync() == 1
+    assert main_sync() == PARTIAL
 
     assert put.calls == []  # nothing was written: there was nothing to write
     error = capsys.readouterr().err
     assert "0 day(s)" not in error, error  # that would read like a run that did nothing
     assert "no data to send" in error, error
     assert RESUME_COMMAND in error, error
+
+
+# --- the exit code of a break part-way -----------------------------------------
+#
+# Measured on 6 November 2026, before `PARTIAL` existed: a 200-day run that
+# wrote 90 days, a run whose first window was refused and a run that lost the
+# network before sending anything all exited `1`. The text already told them
+# apart; the code a scheduled task reads did not.
+
+
+def test_the_code_of_a_break_is_none_of_the_error_codes():
+    """`7` has to stay outside every other code the program uses."""
+    from ghti import check as check_mod
+    from ghti.cli import REMINDING
+    from ghti.errors import AuthRequired, ConfigError, GhtiError
+    from ghti.gaps import FOUND
+
+    assert PARTIAL not in {GhtiError.exit_code, ConfigError.exit_code, AuthRequired.exit_code}
+    assert PARTIAL not in {FOUND, REMINDING, check_mod.WAITING}
+
+
+def test_half_the_range_does_not_read_like_none_of_it(breaks_on_window, capsys):
+    """The one pair that used to be a single code, side by side.
+
+    Re-running a backfill of a year because `1` looked like "nothing was
+    written" asks Google for months it has already copied, and the real gap
+    stays missing until somebody reads the log.
+    """
+    breaks_on_window(2)
+    half = main_sync()
+    capsys.readouterr()
+
+    assert half == PARTIAL
+    assert half != 1
+
+
+def test_an_authorization_that_expires_halfway_is_a_break_not_just_an_authorization():
+    """It keeps its class, so the CLI still prints the Google link, and gains 7.
+
+    Two things have to happen then: authorize again *and* finish the range. `3`
+    would only say the first, and the days already written would be asked for
+    twice.
+    """
+    from ghti.errors import AuthRequired
+    from ghti.sync import SyncReport, _interrupted
+
+    report = SyncReport(FIRST_DAY, TODAY)
+    report.records_sent = 90
+
+    error = _interrupted(AuthRequired("the authorization expired"), FIRST_WINDOW_END, TODAY, report)
+
+    assert isinstance(error, AuthRequired)  # the link is still shown
+    assert error.exit_code == PARTIAL
+    assert AuthRequired.exit_code == 3  # the class is untouched: a run that wrote nothing still exits 3
+    assert RESUME_COMMAND in str(error)
