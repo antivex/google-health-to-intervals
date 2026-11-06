@@ -35,3 +35,14 @@ class GoogleHealthError(GhtiError):
 
 class IntervalsError(GhtiError):
     """intervals.icu returned an error."""
+
+
+def describe(error: Exception) -> str:
+    """The single line a user is shown for an error, wherever it is printed.
+
+    A problem we raised already carries its own sentence. Anything else is a
+    network failure from httpx, whose class name is the only readable part.
+    """
+    if isinstance(error, GhtiError):
+        return str(error)
+    return f"Network problem: {error.__class__.__name__}: {error}"

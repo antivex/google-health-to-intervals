@@ -17,7 +17,7 @@ import httpx
 
 from ghti.config import Settings
 from ghti.crypto import Keys
-from ghti.errors import GhtiError, GoogleHealthError
+from ghti.errors import AuthRequired, GhtiError, GoogleHealthError, describe
 from ghti.google_health import GoogleHealthClient
 from ghti.intervals import IntervalsClient
 from ghti.mapping import FIELDS, METRICS, merge, to_wellness_records
@@ -74,6 +74,33 @@ class SyncReport:
         return "\n".join(out) + "\n"
 
 
+class SyncInterrupted(GhtiError):
+    """A long range stopped part-way: the windows before the break are written.
+
+    The message keeps the real cause first, then says how far the run got and
+    the exact command that carries on from there. Nobody watches a scheduled
+    run, so this text is also what `ghti status` shows the next morning.
+    """
+
+    def __init__(self, cause: Exception, done_through: date, end: date, written: int):
+        self.cause = cause
+        self.done_through = done_through  # last day we know is on intervals.icu
+        self.resume_from = done_through + timedelta(days=1)
+        self.exit_code = getattr(cause, "exit_code", 1)
+        super().__init__(resume_text(cause, done_through, end, written))
+
+
+def resume_text(cause: Exception, done_through: date, end: date, written: int) -> str:
+    """The cause, then where the run got to, then how to carry on."""
+    return "\n".join(
+        (
+            describe(cause),
+            f"  Stopped part-way: {written} day(s) up to {done_through} are already on intervals.icu.",
+            f"  Carry on from there with: ghti backfill --from {done_through + timedelta(days=1)} --to {end}",
+        )
+    )
+
+
 def windows(start: date, end: date, size: int = WINDOW_DAYS) -> Iterator[tuple[date, date]]:
     if size < 1:  # a belt: a size of 0 or less would never advance, and a run would hang forever
         raise ValueError(f"A window must be at least one day long, not {size}.")
@@ -128,15 +155,34 @@ def run_sync(settings: Settings, start: date, end: date, http: httpx.Client, dry
     client, token, updated = open_google(settings, http)
     intervals = IntervalsClient(http, settings.intervals_api_key, settings.intervals_athlete_id)
     report = SyncReport(start, end, token_updated=updated, dry_run=dry_run)
+    done_through: date | None = None  # last day whose window went through in full
     for window_start, window_end in windows(start, end):
-        days = collect(client, token, window_start, window_end, report)
-        records = to_wellness_records(days)
-        if records and not dry_run:
-            intervals.put_wellness(records)  # push each window, so progress is kept
+        try:
+            days = collect(client, token, window_start, window_end, report)
+            records = to_wellness_records(days)
+            if records and not dry_run:
+                intervals.put_wellness(records)  # push each window, so progress is kept
+        except (GhtiError, httpx.HTTPError) as error:
+            if done_through is None or dry_run:
+                raise  # nothing is written: re-running the same command is the right move
+            raise _interrupted(error, done_through, end, report) from error
         report.days.update(days)
         report.records_sent += len(records)
+        done_through = window_end
     _check(report)
     return report
+
+
+def _interrupted(error: Exception, done_through: date, end: date, report: SyncReport) -> GhtiError:
+    """Turn a break halfway into an error that says where to carry on from.
+
+    An expired authorization keeps its own class, so the CLI still shows the
+    authorization link instead of a bare error; it only gains the resume line.
+    """
+    written = report.records_sent
+    if isinstance(error, AuthRequired):
+        return AuthRequired(resume_text(error, done_through, end, written))
+    return SyncInterrupted(error, done_through, end, written)
 
 
 def export_csv(settings: Settings, start: date, end: date, http: httpx.Client) -> tuple[str, SyncReport]:

@@ -31,7 +31,7 @@ from ghti.config import (
     utcnow,
 )
 from ghti.crypto import Keys
-from ghti.errors import AuthRequired, ConfigError, GhtiError
+from ghti.errors import AuthRequired, ConfigError, GhtiError, describe
 from ghti.examples import readings as example_readings
 from ghti import journal
 from ghti.github import (
@@ -493,7 +493,7 @@ def main(argv: list[str] | None = None) -> int:
         _report_error(message)
         return exc.exit_code
     except httpx.HTTPError as exc:
-        message = redact(f"Network problem: {exc.__class__.__name__}: {exc}", _secrets())
+        message = redact(describe(exc), _secrets())
         _report_error(message)
         return 1
 

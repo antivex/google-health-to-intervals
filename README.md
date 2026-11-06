@@ -396,6 +396,7 @@ everybody.
 | `intervals.icu rate limit reached (HTTP 429)` | Nothing to fix: the next run tries again. |
 | `Too many intervals.icu requests in one run` | A backfill that is too long. Split it with `--from` / `--to` into shorter ranges. |
 | `intervals.icu error HTTP 500: ...` (or any other code) | A problem on the intervals.icu side. Nothing to fix: the next run tries again. |
+| `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it. Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. |
 
 ### Command arguments
 
@@ -440,9 +441,22 @@ uv run ghti schedule                      # the daily task, written out (install
 
 A long range (a backfill of a year, say) is read and written **90 days at a
 time**, and each window is sent to intervals.icu before the next one is read,
-so an interruption halfway keeps the days already written: run the same command
-again and it overwrites them with the same values. The windows meet exactly, so
-no day falls between two of them.
+so an interruption halfway keeps the days already written. The windows meet
+exactly, so no day falls between two of them.
+
+If a long run does break, it names the last day it wrote and the command that
+carries on from there, so nothing has to be done twice or guessed:
+
+```
+Error: intervals.icu error HTTP 500: ...
+  Stopped part-way: 90 day(s) up to 2026-07-04 are already on intervals.icu.
+  Carry on from there with: ghti backfill --from 2026-07-05 --to 2026-10-22
+```
+
+`ghti status` repeats those two lines, so an overnight run that broke while
+nobody was watching can still be picked up in the morning. When the very first
+window is the one that fails, nothing was written and no `--from` is offered:
+running the same command again is the right move.
 
 On a computer the encrypted token is saved in the same configuration folder.
 
