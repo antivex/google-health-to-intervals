@@ -25,6 +25,7 @@ GOOGLE = "health.googleapis.com"
 DT = "/v4/users/me/dataTypes"
 INTERVALS_PUT = "https://intervals.icu/api/v1/athlete/i42/wellness-bulk"
 INTERVALS_WELLNESS = "https://intervals.icu/api/v1/athlete/i42/wellness"
+INTERVALS_ATHLETE = "https://intervals.icu/api/v1/athlete/i42"
 
 CLEAR_ENV = (
     "GOOGLE_CLIENT_ID",
@@ -49,9 +50,15 @@ def mock_http():
     so the default read-back echoes the records of the PUTs already made: that
     is what a working intervals.icu does. A test about the silent case
     overrides this route with an answer that loses days.
+
+    The athlete route is the same idea for permissions: by default the key may
+    write (see tests/test_write_access.py for the read-only cases).
     """
     with respx.mock(assert_all_called=False) as router:
         router.get(INTERVALS_WELLNESS).mock(side_effect=_echo_wellness(router))
+        router.get(INTERVALS_ATHLETE).mock(
+            return_value=httpx.Response(200, json={"id": "i42", "icu_permission": "WRITE"})
+        )
         yield router
 
 

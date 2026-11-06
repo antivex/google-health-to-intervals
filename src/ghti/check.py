@@ -83,7 +83,29 @@ def _intervals(settings: Settings, http: httpx.Client) -> Step:
     except httpx.HTTPError as exc:
         return Step(PROBLEM, "intervals.icu", f"Could not reach intervals.icu: {exc.__class__.__name__}: {exc}", 1)
     who = "the owner of the key" if settings.intervals_athlete_id == "0" else settings.intervals_athlete_id
-    return Step(OK, "intervals.icu", f"The key works. Data will be written to athlete {who}.")
+    # The request above only proves the key can read. A key shared read-only
+    # passes it and fails on the first PUT of the first sync, so ask for the
+    # permission before promising that data will be written.
+    permission = client.write_permission()
+    if permission == "WRITE":
+        return Step(OK, "intervals.icu", f"The key reads and may write athlete {who}.")
+    if permission is None:
+        return Step(
+            NOTE,
+            "intervals.icu",
+            f"The key reads athlete {who}. Writing is not verified: intervals.icu did not say "
+            "(no field icu_permission in the answer). The first sync will tell, and it stops at "
+            "the first refused day without losing anything.",
+        )
+    return Step(
+        PROBLEM,
+        "intervals.icu",
+        f"The key can read athlete {who} but not write to it (icu_permission {permission}). "
+        f"A sync would fail at the first write. Check INTERVALS_ATHLETE_ID (now "
+        f"{settings.intervals_athlete_id!r}; '0' means the key's owner) and, if the athlete is "
+        f"someone else, ask them for write access on intervals.icu.",
+        2,
+    )
 
 
 def _scopes(token: StoredToken) -> list[Step]:

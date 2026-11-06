@@ -229,19 +229,32 @@ immediately copies the last 14 days.
 
 **One click, any time: Actions > Check setup > Run workflow.** It writes nothing
 and its Summary lists, line by line, what is ready and what is not: the
-secrets, the time zone, your intervals.icu key (one read-only request) and the
-Google authorization, with the hours left before it expires. Use it after the
-setup, and again whenever data stops arriving. On a computer: `ghti check`.
+secrets, the time zone, your intervals.icu key (two read-only requests: can it
+read that athlete, and may it write) and the Google authorization, with the
+hours left before it expires. Use it after the setup, and again whenever data
+stops arriving. On a computer: `ghti check`.
 
 ```
 Setup check
   ok    Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and INTERVALS_API_KEY are set.
   ok    Time zone: Days are cut at midnight in Europe/Rome.
-  ok    intervals.icu: The key works. Data will be written to athlete i123456.
+  ok    intervals.icu: The key reads and may write athlete i123456.
   ok    Google authorization: Google accepted it. It expires on 2026-11-12 09:00 UTC (in 144 h).
 
 Everything is ready: the next run will copy your data.
 ```
+
+If the key can read that athlete but not write to it (an athlete shared with
+you read-only, or the wrong `INTERVALS_ATHLETE_ID`), the line says so **before**
+the first sync:
+
+```
+  PROBLEM  intervals.icu: The key can read athlete i123456 but not write to it
+           (icu_permission READ). A sync would fail at the first write.
+```
+
+If intervals.icu does not say, the line is a `note` and promises nothing: the
+check never claims your data will be written when it has not been able to tell.
 
 - The Re-authorize run should be green, and its Summary shows a table of the
   days copied.

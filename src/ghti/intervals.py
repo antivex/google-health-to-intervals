@@ -21,6 +21,11 @@ BASE_URL = "https://intervals.icu/api/v1"
 CHUNK_SIZE = 100  # days per request
 MAX_REQUESTS_PER_RUN = 100  # far below the daily limit, even with 4 runs a day
 
+# `icu_permission` of the athlete object: what this key may do with that athlete.
+# Enum of the intervals.icu OpenAPI v1.0.0 (read 6 November 2026); the document
+# gives the three values and no description, so anything else is read as unknown.
+PERMISSIONS = ("NONE", "READ", "WRITE")
+
 
 class IntervalsClient:
     def __init__(
@@ -50,6 +55,31 @@ class IntervalsClient:
         response = self.http.get(url, params=params, auth=self.auth)
         if response.status_code >= 400:
             raise _error(response, self.athlete_id)
+
+    def write_permission(self) -> str | None:
+        """What this key may do with this athlete: "WRITE", "READ", "NONE" or
+        None when intervals.icu does not say.
+
+        One read-only request to `GET /athlete/{id}`, whose answer carries
+        `icu_permission`. A key that opens the wellness page can still be
+        read-only: `ghti check` would pass and the first PUT of the first sync
+        would fail. Nothing here raises: a missing field, an unexpected value or
+        a failed request means "not verified", and the caller says so instead of
+        turning a silence into a problem.
+        """
+        url = f"{BASE_URL}/athlete/{self.athlete_id}"
+        self.requests += 1
+        try:
+            response = self.http.get(url, auth=self.auth)
+            if response.status_code >= 400:
+                return None
+            athlete = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(athlete, dict):
+            return None
+        permission = athlete.get("icu_permission")
+        return permission if permission in PERMISSIONS else None
 
     def read_back(self, oldest: date, newest: date, fields: set[str]) -> dict[str, dict]:
         """Read the days just sent, to tell "sent" from "saved".

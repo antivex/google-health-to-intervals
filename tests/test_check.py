@@ -24,7 +24,7 @@ def test_everything_ready(settings, mock_http, capsys):
     out = capsys.readouterr().out
     assert "Everything is ready" in out
     assert "Days are cut at midnight in Europe/Rome." in out
-    assert "Data will be written to athlete i42." in out
+    assert "The key reads and may write athlete i42." in out
     assert "It expires on 2026-10-28 09:00 UTC (in 144 h)." in out
     assert "MISSING" not in out and "PROBLEM" not in out
     assert API_KEY not in out
