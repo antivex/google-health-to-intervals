@@ -20,7 +20,7 @@ from ghti.crypto import Keys
 from ghti.errors import AuthRequired, GhtiError, GoogleHealthError, describe
 from ghti.google_health import GoogleHealthClient
 from ghti.intervals import IntervalsClient
-from ghti.mapping import FIELDS, METRICS, drop_impossible, merge, to_wellness_records
+from ghti.mapping import FIELDS, METRICS, confirm_written, drop_impossible, merge, to_wellness_records
 from ghti.oauth import StoredToken, TokenStore, refresh_access_token
 
 WINDOW_DAYS = 90  # long ranges are processed (and pushed) 90 days at a time
@@ -32,6 +32,7 @@ class SyncReport:
     end: date
     days: dict[date, dict] = field(default_factory=dict)
     records_sent: int = 0
+    records_confirmed: int | None = None  # None: not read back (dry run, --no-confirm, or the check failed)
     ok: set[str] = field(default_factory=set)
     failed: dict[str, str] = field(default_factory=dict)
     skipped: set[str] = field(default_factory=set)
@@ -42,6 +43,8 @@ class SyncReport:
     def text(self, show_values: bool = False) -> str:
         verb = "Would send" if self.dry_run else "Sent"
         lines = [f"{verb} {self.records_sent} day(s) to intervals.icu ({self.start} to {self.end})."]
+        if self.records_confirmed is not None:
+            lines.append(f"  {self.records_confirmed} confirmed on intervals.icu of {self.records_sent} sent.")
         for day in sorted(self.days):
             values = self.days[day]
             shown = ", ".join(f"{k}={values[k]}" if show_values else k for k in FIELDS if k in values)
@@ -58,6 +61,10 @@ class SyncReport:
             "",
             f"{self.records_sent} day(s) {verb}, from {self.start} to {self.end}.",
             "",
+        ]
+        if self.records_confirmed is not None:
+            out += [f"{self.records_confirmed} confirmed on intervals.icu of {self.records_sent} sent.", ""]
+        out += [
             "| Day | " + " | ".join(FIELDS) + " |",
             "|---|" + "---|" * len(FIELDS),
         ]
@@ -202,11 +209,20 @@ def _history_note(report: SyncReport) -> None:
         )
 
 
-def run_sync(settings: Settings, start: date, end: date, http: httpx.Client, dry_run: bool = False) -> SyncReport:
+def run_sync(
+    settings: Settings,
+    start: date,
+    end: date,
+    http: httpx.Client,
+    dry_run: bool = False,
+    confirm: bool = True,
+) -> SyncReport:
     client, token, updated = open_google(settings, http)
     intervals = IntervalsClient(http, settings.intervals_api_key, settings.intervals_athlete_id)
     report = SyncReport(start, end, token_updated=updated, dry_run=dry_run)
     done_through: date | None = None  # last day whose window went through in full
+    confirmed = 0
+    checking = confirm and not dry_run
     for window_start, window_end in windows(start, end):
         try:
             days = collect(client, token, window_start, window_end, report)
@@ -217,12 +233,55 @@ def run_sync(settings: Settings, start: date, end: date, http: httpx.Client, dry
             if done_through is None or dry_run:
                 raise  # nothing is written: re-running the same command is the right move
             raise _interrupted(error, done_through, end, report) from error
+        if records and checking:
+            kept = _confirm_window(intervals, records, window_start, window_end, report)
+            if kept is None:
+                checking = False  # the check itself failed: count nothing, promise nothing
+            else:
+                confirmed += kept
         report.days.update(days)
         report.records_sent += len(records)
         done_through = window_end
+    if checking and report.records_sent:
+        report.records_confirmed = confirmed
+        if confirmed == 0:
+            report.notes.append(
+                f"intervals.icu answered 200 but kept none of the {report.records_sent} day(s) sent. "
+                "Check INTERVALS_ATHLETE_ID (it must be your own athlete, or '0' for the key's owner)."
+            )
     _check(report)
     _history_note(report)
     return report
+
+
+def _confirm_window(
+    intervals: IntervalsClient,
+    records: list[dict],
+    window_start: date,
+    window_end: date,
+    report: SyncReport,
+) -> int | None:
+    """Read the window back and say what is really on intervals.icu.
+
+    Returns how many of the days sent are saved, or None when the check could
+    not run. A failed check never fails the run: the days were sent, and
+    turning a successful write into an error because the receipt could not be
+    read would be worse than saying so. But it is said out loud, because
+    "sent" on its own is what this whole check exists to stop promising.
+    """
+    fields = {name for record in records for name in record if name != "id"}
+    try:
+        found = intervals.read_back(window_start, window_end, fields)
+    except (GhtiError, httpx.HTTPError) as error:
+        report.notes.append(
+            f"The {len(records)} day(s) of {window_start}..{window_end} were sent, but reading them back "
+            f"did not work, so they are not verified: {describe(error)}"
+        )
+        return None
+    problems = confirm_written(records, found)
+    report.notes.extend(problems)
+    missing = {problem.split(" ", 1)[0] for problem in problems if " is not on intervals.icu" in problem}
+    return len(records) - len(missing)
 
 
 def _interrupted(error: Exception, done_through: date, end: date, report: SyncReport) -> GhtiError:

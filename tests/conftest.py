@@ -24,6 +24,7 @@ REFRESH_TOKEN = "1//test-refresh-token"
 GOOGLE = "health.googleapis.com"
 DT = "/v4/users/me/dataTypes"
 INTERVALS_PUT = "https://intervals.icu/api/v1/athlete/i42/wellness-bulk"
+INTERVALS_WELLNESS = "https://intervals.icu/api/v1/athlete/i42/wellness"
 
 CLEAR_ENV = (
     "GOOGLE_CLIENT_ID",
@@ -42,8 +43,32 @@ CLEAR_ENV = (
 
 @pytest.fixture(autouse=True)
 def mock_http():
+    """Every test gets an intervals.icu that really keeps what it is sent.
+
+    A sync reads the days back after writing them (see tests/test_confirm.py),
+    so the default read-back echoes the records of the PUTs already made: that
+    is what a working intervals.icu does. A test about the silent case
+    overrides this route with an answer that loses days.
+    """
     with respx.mock(assert_all_called=False) as router:
+        router.get(INTERVALS_WELLNESS).mock(side_effect=_echo_wellness(router))
         yield router
+
+
+def _echo_wellness(router):
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent: dict[str, dict] = {}
+        for call in router.calls:
+            put = call.request
+            if put.method == "PUT" and put.url.path.endswith("/wellness-bulk"):
+                for record in json.loads(put.content):
+                    sent[record["id"]] = record
+        oldest = request.url.params.get("oldest", "")
+        newest = request.url.params.get("newest", "9999-12-31")
+        days = [record for day, record in sorted(sent.items()) if oldest <= day <= newest]
+        return httpx.Response(200, json=days)
+
+    return answer
 
 
 @pytest.fixture(autouse=True)

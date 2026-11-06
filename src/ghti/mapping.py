@@ -505,3 +505,63 @@ def drop_impossible(days: dict[date, dict[str, float | int]]) -> list[str]:
                     "so intervals.icu keeps what it had for that day."
                 )
     return notes
+
+
+def confirm_written(sent: list[dict], found: dict[str, dict]) -> list[str]:
+    """Compare what was sent with what intervals.icu hands back, field by field.
+
+    `PUT /athlete/{id}/wellness-bulk` answers `200 OK` with **no body**
+    (intervals.icu OpenAPI, https://intervals.icu/api/v1/docs, read 6 November
+    2026: the single-day PUT returns the record, the bulk one documents no
+    content). So a 200 proves the request was accepted, not that a day was
+    kept. Reading the days back is the only proof, and this is the comparison.
+
+    Three different answers, kept apart on purpose:
+    - the day is not there at all: nothing of it was saved;
+    - the day is there but a field we sent is missing or null: that field was
+      not saved (a locked record and a field the account does not use both
+      look like this);
+    - the field is there with another value: saved, differently. That is not a
+      loss, and calling it one would cry wolf at a server-side rounding.
+
+    Fields we never sent (ctl, atl, the owner's own comments) are not our
+    business and are never reported.
+    """
+    problems: list[str] = []
+    for record in sorted(sent, key=lambda r: str(r.get("id", ""))):
+        day = str(record.get("id", ""))
+        fields = [f for f in record if f != "id"]
+        back = found.get(day)
+        if back is None:
+            problems.append(f"{day} is not on intervals.icu ({', '.join(fields)} was sent)")
+            continue
+        for field_name in fields:
+            if back.get(field_name) is None:
+                problems.append(f"{day}: {field_name} was sent but is not saved")
+                continue
+            if not _same_number(record[field_name], back[field_name]):
+                problems.append(
+                    f"{day}: {field_name} was sent as {_show(record[field_name])} "
+                    f"and is saved as {_show(back[field_name])}"
+                )
+    return problems
+
+
+def _show(value: Any) -> str:
+    """A number as a person reads it; anything else as it came."""
+    return f"{value:g}" if isinstance(value, (int, float)) and not isinstance(value, bool) else repr(value)
+
+
+def _same_number(sent: Any, back: Any) -> bool:
+    """True when two numbers are the same measurement.
+
+    An int sent and a float read back is the same value, and two floats that
+    differ in the last bit are the same value too: JSON has one number type and
+    a round trip through it is not a change. Anything that is not a number at
+    all (a string, a list) is reported as different rather than hidden.
+    """
+    if isinstance(sent, bool) or isinstance(back, bool):
+        return sent is back
+    if not isinstance(sent, (int, float)) or not isinstance(back, (int, float)):
+        return sent == back
+    return math.isclose(float(sent), float(back), rel_tol=1e-9, abs_tol=0.0)

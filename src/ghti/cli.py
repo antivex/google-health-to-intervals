@@ -114,7 +114,9 @@ def _report(report: SyncReport, show_values: bool) -> int:
     return 0
 
 
-def _run_and_record(command: str, settings, start: date, end: date, dry_run: bool) -> SyncReport:
+def _run_and_record(
+    command: str, settings, start: date, end: date, dry_run: bool, confirm: bool = True
+) -> SyncReport:
     """Run a sync and write one diary line, so `ghti status` can report it later.
 
     A failure is written too: without it a scheduled run that stops working
@@ -122,7 +124,7 @@ def _run_and_record(command: str, settings, start: date, end: date, dry_run: boo
     """
     try:
         with _http() as http:
-            report = run_sync(settings, start, end, http, dry_run=dry_run)
+            report = run_sync(settings, start, end, http, dry_run=dry_run, confirm=confirm)
     except GhtiError as error:
         if not dry_run:
             journal.append(journal.failure(str(error), command=command, start=start, end=end))
@@ -169,7 +171,7 @@ def cmd_sync(args) -> int:
     settings = _settings_or_record("sync", args.dry_run)
     end = settings.today()
     start = end - timedelta(days=args.days - 1)
-    report = _run_and_record("sync", settings, start, end, args.dry_run)
+    report = _run_and_record("sync", settings, start, end, args.dry_run, confirm=args.confirm)
     return _report(report, args.show_values)
 
 
@@ -180,7 +182,7 @@ def cmd_backfill(args) -> int:
         raise ConfigError(f"--from ({args.start}) is after --to ({end}).")
     if (end - args.start).days >= MAX_DAYS:
         raise ConfigError(f"The range is longer than {MAX_DAYS} days.")
-    report = _run_and_record("backfill", settings, args.start, end, args.dry_run)
+    report = _run_and_record("backfill", settings, args.start, end, args.dry_run, confirm=args.confirm)
     return _report(report, args.show_values)
 
 
@@ -420,6 +422,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("sync", help="copy the last N days (default 3); safe to repeat")
     p.add_argument("--days", type=int, default=3)
     p.add_argument("--dry-run", action="store_true", help="read from Google but do not write to intervals.icu")
+    p.add_argument(
+        "--no-confirm",
+        dest="confirm",
+        action="store_false",
+        help="do not read the days back from intervals.icu to check they were saved",
+    )
     p.add_argument("--show-values", action="store_true", help="print the values (avoid in public logs)")
     p.add_argument("--skip-if-unconfigured", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_sync)
@@ -428,6 +436,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--from", dest="start", type=_day, required=True, metavar="YYYY-MM-DD")
     p.add_argument("--to", type=_day, metavar="YYYY-MM-DD", help="default: today")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--no-confirm",
+        dest="confirm",
+        action="store_false",
+        help="do not read the days back from intervals.icu to check they were saved",
+    )
     p.add_argument("--show-values", action="store_true")
     p.set_defaults(func=cmd_backfill)
 

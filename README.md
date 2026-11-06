@@ -406,6 +406,13 @@ everybody.
 | `intervals.icu rate limit reached (HTTP 429)` | Nothing to fix: the next run tries again. |
 | `Too many intervals.icu requests in one run` | A backfill that is too long. Split it with `--from` / `--to` into shorter ranges. |
 | `intervals.icu error HTTP 500: ...` (or any other code) | A problem on the intervals.icu side. Nothing to fix: the next run tries again. |
+| `intervals.icu answered something that is not JSON: ...` | The answer to the read-back was not a list of days (a maintenance page, usually). The days were still sent; the check could not run. |
+| `intervals.icu answered dict, expected a list of days.` | Same thing: the read-back got an answer of the wrong shape. The write is not affected. |
+| `note: ... were sent, but reading them back did not work, so they are not verified` | The days left for intervals.icu and no error came back from the write; the check that they were saved could not run. Nothing to fix if the next run confirms them. |
+| `note: <day> is not on intervals.icu (...)` | intervals.icu answered 200 and kept nothing for that day. Check `INTERVALS_ATHLETE_ID` (your own athlete, or `0`). |
+| `note: <day>: <field> was sent but is not saved` | The day is there, that field is not: usually a locked wellness record on intervals.icu, or a field your account does not keep. |
+| `note: <day>: <field> was sent as X and is saved as Y` | Saved, with another value: intervals.icu rounded it or something else wrote that field after us. Not a loss. |
+| `note: intervals.icu answered 200 but kept none of the N day(s) sent` | The write was accepted and nothing arrived. Almost always `INTERVALS_ATHLETE_ID` pointing at another athlete. |
 | `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it. Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. |
 | `note: Google Health had no data at all for ...` | Not an error: Google has nothing recorded for those days (the watch was not connected yet). Ask for a recent period to see data. |
 | `note: Nothing before <day>` | Your history on Google starts on that day; earlier days are empty, so start the next backfill there. |

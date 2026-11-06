@@ -51,6 +51,37 @@ class IntervalsClient:
         if response.status_code >= 400:
             raise _error(response, self.athlete_id)
 
+    def read_back(self, oldest: date, newest: date, fields: set[str]) -> dict[str, dict]:
+        """Read the days just sent, to tell "sent" from "saved".
+
+        One request for a whole window, asking only for the fields that were
+        sent (`fields` also drops null values from the answer, so a field that
+        is absent here was not kept). The bulk PUT answers 200 with no body
+        (intervals.icu OpenAPI, read 6 November 2026), so this is the only
+        proof a day is really on intervals.icu.
+        """
+        url = f"{BASE_URL}/athlete/{self.athlete_id}/wellness"
+        params = {
+            "oldest": oldest.isoformat(),
+            "newest": newest.isoformat(),
+            "fields": ",".join(sorted(fields)),
+        }
+        self.requests += 1
+        response = self.http.get(url, params=params, auth=self.auth)
+        if response.status_code >= 400:
+            raise _error(response, self.athlete_id)
+        try:
+            records = response.json()
+        except ValueError as error:
+            raise IntervalsError(f"intervals.icu answered something that is not JSON: {response.text[:200]}") from error
+        if not isinstance(records, list):
+            raise IntervalsError(f"intervals.icu answered {type(records).__name__}, expected a list of days.")
+        return {
+            str(record["id"]): record
+            for record in records
+            if isinstance(record, dict) and record.get("id") is not None
+        }
+
     def put_wellness(self, records: list[dict]) -> None:
         """Send records (each with "id" = ISO date), CHUNK_SIZE at a time."""
         url = f"{BASE_URL}/athlete/{self.athlete_id}/wellness-bulk"
