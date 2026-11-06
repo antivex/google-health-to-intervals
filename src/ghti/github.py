@@ -7,6 +7,7 @@ import os
 import sys
 
 from ghti.oauth import REDIRECT_URI
+from ghti.sync import PARTIAL as PARTIAL_CODE
 
 UPSTREAM = "https://github.com/antivex/google-health-to-intervals"
 GUIDE_URL = "https://antivex.gumroad.com/l/fitbit-google-health-intervals"
@@ -63,12 +64,54 @@ def mask_in_logs(value: str) -> None:
         print(f"::add-mask::{value}")
 
 
-def _reauth_workflow_url() -> str | None:
+def _workflow_url(file_name: str) -> str | None:
+    """The run page of one of our workflows, or None outside GitHub Actions."""
     repo = os.environ.get("GITHUB_REPOSITORY")
     if not repo:
         return None
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-    return f"{server}/{repo}/actions/workflows/reauth.yml"
+    return f"{server}/{repo}/actions/workflows/{file_name}"
+
+
+def _reauth_workflow_url() -> str | None:
+    return _workflow_url("reauth.yml")
+
+
+def resume_instructions(resume_from: str, command: str) -> str:
+    """What to do about a gap, written for whoever is reading the run page.
+
+    The error text already carries the `ghti backfill` line that ends the gap.
+    That line is a terminal command, and the buyer who installed this bridge
+    with "Use this template" has no terminal: the run page is the only place
+    they ever see. So the cloud route - Actions > Sync > Run workflow, with the
+    day in `from` - comes first, and the command stays for whoever has a PC.
+
+    The title says "stopped part-way", not "error": a run that wrote 90 of 200
+    days must not read like a run that wrote nothing. That is the whole point
+    of exit code 7 being its own code, and the run page said `## Error` for
+    both until 6 November 2026.
+    """
+    workflow = _workflow_url("sync.yml")
+    lines = [
+        "## Stopped part-way: the days it got through are on intervals.icu, the rest are not",
+        "",
+        "Nothing fills this gap on its own: the next scheduled sync copies the last few days",
+        f"and never looks back. Carry on from **{resume_from}**, whichever way suits you:",
+        "",
+    ]
+    if workflow:
+        lines += [
+            f"- **Here on GitHub, no computer needed:** open [Actions > Sync]({workflow}), click",
+            f"  **Run workflow**, type `{resume_from}` into **from** and click the green",
+            "  **Run workflow** button. It copies that day up to today.",
+        ]
+    lines += [
+        f"- **On a computer:** `{command}`",
+        "",
+        f"Until those days are on intervals.icu, `ghti status` exits {PARTIAL_CODE}: the same code this run",
+        "exited with, so a scheduled check stays red instead of going green over a gap.",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def auth_instructions(link: str, title: str, reason: str = "") -> str:

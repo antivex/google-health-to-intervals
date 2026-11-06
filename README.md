@@ -448,7 +448,7 @@ everybody.
 | `note: <day>: <field> was sent but is not saved` | The day is there, that field is not: usually a locked wellness record on intervals.icu, or a field your account does not keep. |
 | `note: <day>: <field> was sent as X and is saved as Y` | Saved, with another value: intervals.icu rounded it or something else wrote that field after us. Not a loss. |
 | `note: intervals.icu answered 200 but kept none of the N day(s) sent` | The write was accepted and nothing arrived. Almost always `INTERVALS_ATHLETE_ID` pointing at another athlete. |
-| `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it (exit `7`). Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. |
+| `Stopped part-way: N day(s) up to ...` | A long range broke after writing part of it (exit `7`). Run the `ghti backfill --from ... --to ...` line printed under the error; it starts at the first day that is missing. No computer? On GitHub the run page says the same thing as **Actions > Sync > Run workflow** with that day in `from`. |
 | `... are still missing on intervals.icu` (under `ghti status`) | The same gap, seen the morning after: a later good run took the last line of the diary, but those days never arrived. Run the `ghti backfill` line printed under it; until then `status` keeps exiting `7`. |
 | `note: Google Health had no data at all for ...` | Not an error: Google has nothing recorded for those days (the watch was not connected yet). Ask for a recent period to see data. |
 | `note: Nothing before <day>` | Your history on Google starts on that day; earlier days are empty, so start the next backfill there. |
@@ -512,7 +512,14 @@ Error: intervals.icu error HTTP 500: ...
 `ghti status` repeats those two lines and answers `7` itself until the gap is
 really filled, so an overnight run that broke while nobody was watching can
 still be picked up in the morning - by a person reading the page or by a task
-reading the code. When the very first
+reading the code.
+
+On GitHub the same break is written for somebody who has no terminal. The run
+page of the failed *Sync* opens with **Stopped part-way** (not "Error": part of
+the range did land), names the first day still missing, and gives the way out
+that works in a browser - **Actions > Sync > Run workflow**, that day typed
+into `from`, which copies it up to today - with the `ghti backfill` command
+underneath for whoever does have a computer. When the very first
 window is the one that fails, nothing was written and no `--from` is offered:
 running the same command again is the right move.
 
@@ -522,7 +529,7 @@ one:
 | exit | what happened |
 |---|---|
 | `0` | the whole range is on intervals.icu |
-| `7` | it stopped part-way: the days up to the day named in the error **are** written. Carry on with the `ghti backfill --from ...` printed under it; starting the range again only asks Google for months it already sent |
+| `7` | it stopped part-way: the days up to the day named in the error **are** written. Carry on with the `ghti backfill --from ...` printed under it, or on GitHub with **Actions > Sync > Run workflow** and that day in `from`; starting the range again only asks Google for months it already sent |
 | `1` / `2` / `3` | it wrote nothing at all (`1` a failure, `2` a setting, `3` Google authorization): run the same command again once the cause is fixed |
 
 `7` is deliberately not `1`: a 200-day run that wrote 90 days and a run that

@@ -52,6 +52,7 @@ from ghti.github import (
     help_line,
     in_actions,
     mask_in_logs,
+    resume_instructions,
     warning,
     write_summary,
 )
@@ -663,11 +664,37 @@ def _secrets() -> tuple[str, ...]:
     return tuple(values.get(key, "") for key in REQUIRED if key != "GOOGLE_CLIENT_ID")
 
 
-def _report_error(message: str) -> None:
-    """Print the error and say where the answer is: FAQ, issue, paid guide."""
+def _report_error(message: str, error: Exception | None = None) -> None:
+    """Print the error and say where the answer is: FAQ, issue, paid guide.
+
+    A run that stopped part-way gets a different heading and the two ways to
+    end the gap: `message` already carries the `ghti backfill` line, but the
+    buyer reading a GitHub run page has no terminal to type it into.
+    """
     print(f"Error: {message}", file=sys.stderr)
     print(help_line(), file=sys.stderr)
-    write_summary(f"## Error\n\n{message}\n\n{help_footer()}")
+    resume_from = getattr(error, "resume_from", None)
+    if resume_from is None:
+        write_summary(f"## Error\n\n{message}\n\n{help_footer()}")
+        return
+    command = _resume_command(message)
+    write_summary(
+        resume_instructions(str(resume_from), command)
+        + f"\n### What stopped it\n\n{message}\n\n{help_footer()}"
+    )
+
+
+def _resume_command(message: str) -> str:
+    """The `ghti backfill ...` line the error already printed, for the run page.
+
+    Read back out of the message instead of rebuilt: one command in the error
+    and a different one in the summary would be worse than none.
+    """
+    for line in message.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Carry on from there with: "):
+            return stripped.removeprefix("Carry on from there with: ")
+    return "ghti backfill --from <the day named above>"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -685,7 +712,7 @@ def main(argv: list[str] | None = None) -> int:
         return exc.exit_code
     except GhtiError as exc:
         message = redact(str(exc), _secrets())
-        _report_error(message)
+        _report_error(message, exc)
         return exc.exit_code
     except httpx.HTTPError as exc:
         message = redact(describe(exc), _secrets())
