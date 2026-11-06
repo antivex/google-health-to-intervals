@@ -29,7 +29,7 @@ import pytest
 from conftest import API_KEY, INTERVALS_WELLNESS
 from ghti import config, gaps
 from ghti.cli import build_parser, main
-from ghti.errors import ConfigError
+from ghti.errors import AuthRequired, ConfigError, GhtiError, IntervalsError
 from ghti.intervals import CHUNK_SIZE, IntervalsClient
 from test_unfinished import broke_halfway  # noqa: F401
 
@@ -196,9 +196,9 @@ def test_gaps_is_a_command_that_writes_nothing(settings, mock_http, capsys):
     assert "Every day" in capsys.readouterr().out
 
 
-def test_the_command_exits_1_when_days_are_missing(settings, mock_http, capsys):
+def test_the_command_exits_with_its_own_code_when_days_are_missing(settings, mock_http, capsys):
     serve(mock_http, [])
-    assert main(["gaps", "--from", "2026-10-01", "--to", "2026-10-03"]) == 1
+    assert main(["gaps", "--from", "2026-10-01", "--to", "2026-10-03"]) == gaps.FOUND
     assert "2026-10-01 to 2026-10-03" in capsys.readouterr().out
 
 
@@ -222,7 +222,7 @@ def test_the_diary_gap_is_rechecked_and_shrinks_to_what_is_really_missing(
     """The whole point: 110 days claimed by the diary, 22 really missing."""
     broke_halfway()
     serve(mock_http, days(date(2026, 7, 5), date(2026, 9, 30)))
-    assert main(["gaps"]) == 1
+    assert main(["gaps"]) == gaps.FOUND
     out = capsys.readouterr().out
     assert "Checking the range the diary says is unfinished: 2026-07-05 to 2026-10-22." in out
     assert "22 of the 110 day(s)" in out
@@ -282,7 +282,7 @@ def only_the_intervals_key(monkeypatch):
 
 def test_gaps_needs_only_the_intervals_key(only_the_intervals_key, mock_http, capsys):
     serve(mock_http, [])
-    assert main(["gaps", "--days", "7"]) == 1
+    assert main(["gaps", "--days", "7"]) == gaps.FOUND
     printed = capsys.readouterr()
     assert "nothing of ours on 7 of the 7 day(s)" in printed.out
     assert "GOOGLE" not in printed.err and printed.err == ""
@@ -322,3 +322,62 @@ def test_a_full_setup_still_gives_gaps_the_google_values(settings):
 def test_missing_settings_can_be_asked_about_one_command(only_the_intervals_key):
     assert config.missing_settings() == ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
     assert config.missing_settings(needs=config.INTERVALS_ONLY) == []
+
+
+# --- the alarm and the failures must not sound alike -------------------------
+#
+# Measured on 6 November 2026, with the command already narrowed to the
+# intervals.icu key: `ghti gaps --days 3` with a wrong key printed
+# "intervals.icu refused the request (HTTP 401)" and exited 1 - the same code
+# it used for "these days are really missing". A scheduled task listening for
+# the alarm heard the same beep for "your history has holes" and "I never got
+# an answer". These tests hold the three outcomes apart.
+
+
+def test_the_alarm_code_is_none_of_the_error_codes():
+    """4 is free, and it must stay free: 1 any failure, 2 setup, 3 Google."""
+    taken = {0} | {
+        error.exit_code
+        for error in (GhtiError, ConfigError, AuthRequired, IntervalsError)
+    }
+    assert gaps.FOUND not in taken
+
+
+def test_a_refused_key_does_not_raise_the_alarm(only_the_intervals_key, mock_http, capsys):
+    """The measured case: HTTP 401 is "I could not ask", not "they are gone"."""
+    mock_http.get(INTERVALS_WELLNESS).mock(return_value=httpx.Response(401, json={}))
+    code = main(["gaps", "--days", "7"])
+    assert code != gaps.FOUND
+    assert code == IntervalsError.exit_code
+    err = capsys.readouterr().err
+    assert "401" in err and "INTERVALS_API_KEY" in err
+
+
+def test_a_network_failure_does_not_raise_the_alarm(only_the_intervals_key, mock_http, capsys):
+    """Nor does a dead network: still "the check did not run"."""
+    mock_http.get(INTERVALS_WELLNESS).mock(side_effect=httpx.ConnectError("no route"))
+    code = main(["gaps", "--days", "7"])
+    assert code != gaps.FOUND
+    assert code != 0
+    assert "Network problem" in capsys.readouterr().err
+
+
+def test_a_clean_answer_is_still_zero(only_the_intervals_key, mock_http, capsys):
+    """The third outcome keeps the code every scheduler reads as "all well"."""
+    serve(mock_http, days(date(2026, 10, 16), date(2026, 10, 22)))
+    assert main(["gaps", "--days", "7"]) == 0
+
+
+def test_the_help_says_which_code_is_the_alarm(capsys):
+    """Whoever writes the scheduled task must not have to read the source."""
+    with pytest.raises(SystemExit):
+        main(["gaps", "--help"])
+    out = " ".join(capsys.readouterr().out.split())  # argparse wraps the lines
+    assert f"{gaps.FOUND} when days are missing" in out
+    assert "1 when the check failed" in out
+
+    parser = build_parser()  # and the one-line summary in `ghti --help`
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--help"])
+    assert f"exits {gaps.FOUND} when days are missing" in " ".join(capsys.readouterr().out.split())
+

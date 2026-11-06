@@ -524,8 +524,20 @@ intervals.icu has nothing of ours on 22 of the 110 day(s) from 2026-07-05 to 202
 It writes nothing, and asking is cheap: the days are read 100 at a time, so a
 month costs 1 request and a whole year 4, out of the 5,000 a day intervals.icu
 allows. Use `--from`/`--to` for any other range, or `--days N` when the diary
-has no gap to check. It exits 1 when something is missing, so a scheduled task
-can use it as an alarm.
+has no gap to check.
+
+It is built to be an alarm, so its exit codes keep the three answers apart:
+
+| exit | what happened |
+|---|---|
+| `0` | every day in the range has something of ours on intervals.icu |
+| `4` | some days are missing: the output names them and the backfill that fills them |
+| `1` | the check never ran - wrong `INTERVALS_API_KEY` (HTTP 401), network down |
+| `2` | a setting is missing |
+
+`4` is deliberately not `1`: a scheduled task that treated "missing days" and
+"I could not ask intervals.icu" as the same beep would either raise a false
+alarm about your history or, worse, go quiet about a check that never happened.
 
 **It is the one command that needs only `INTERVALS_API_KEY`** (plus
 `INTERVALS_ATHLETE_ID` if your key is not your own). It never talks to Google,

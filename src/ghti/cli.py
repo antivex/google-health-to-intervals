@@ -342,6 +342,12 @@ def cmd_gaps(args) -> int:
     often that most of it is already there and the command to finish it is
     much shorter than the one `ghti status` prints.
 
+    Exit codes, because this command is meant to be an alarm: 0 nothing is
+    missing, `gaps.FOUND` (4) some days are, and the ordinary 1/2/3 when the
+    check did not run at all. 4 is not 1 on purpose - when a wrong key gives
+    HTTP 401 a scheduled task must not read it as "those days are gone", and
+    must not read it as a clean answer either.
+
     This reads intervals.icu and nothing else, so it asks only for
     INTERVALS_API_KEY. Somebody who wants to know what is already on the site
     should not have to set up a Google authorization first - that is the setup
@@ -372,7 +378,7 @@ def cmd_gaps(args) -> int:
     text = gaps_mod.text(ranges, start, end)
     print(text)
     write_summary("## Days missing on intervals.icu\n\n```\n" + text + "\n```")
-    return 1 if ranges else 0
+    return gaps_mod.FOUND if ranges else 0
 
 
 def cmd_status(args) -> int:
@@ -536,7 +542,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(
         "gaps",
         help="ask intervals.icu which days it has nothing of ours on; writes nothing,"
-        " needs only INTERVALS_API_KEY",
+        f" needs only INTERVALS_API_KEY; exits {gaps_mod.FOUND} when days are missing,"
+        " 0 when none are, 1/2/3 when the check failed",
+        description="Ask intervals.icu which days of a range it has nothing of ours on."
+        " It writes nothing and needs only INTERVALS_API_KEY."
+        f" Exit codes, for a scheduled task that uses it as an alarm: {gaps_mod.FOUND} when days"
+        " are missing, 0 when none are, 1 when the check failed (wrong key, network),"
+        " 2 when a setting is missing."
+        f" {gaps_mod.FOUND} is not 1 on purpose: a check that never ran must not sound like"
+        " missing days, nor like a clean answer.",
     )
     p.add_argument("--from", dest="start", type=_day, metavar="YYYY-MM-DD", help="default: the gap the diary reports")
     p.add_argument("--to", type=_day, metavar="YYYY-MM-DD", help="default: today")

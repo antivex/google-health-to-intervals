@@ -25,6 +25,22 @@ from datetime import date, timedelta
 from ghti.intervals import CHUNK_SIZE, IntervalsClient
 from ghti.mapping import FIELDS
 
+#: What `ghti gaps` exits with when intervals.icu is missing days.
+#
+# Measured on 6 November 2026, right after the command started working: it
+# exited 1 when it found missing days - its whole purpose, the alarm a
+# scheduled task listens to - and also 1 when the check itself failed. A wrong
+# INTERVALS_API_KEY gives HTTP 401, which is an IntervalsError, which is 1. So
+# the alarm could not tell "those days are really gone" from "I could not ask",
+# and the second case is the one that must not pass for a clean answer either.
+#
+# The finding therefore gets a code of its own, outside the three the errors
+# already use everywhere (1 any failure, 2 bad setup, 3 Google authorization
+# needed). Those stay as they are, for every command: a scheduled task that
+# treats 4 as the alarm, 0 as "nothing missing" and anything else as "the check
+# did not run" is never wrong about which of the three happened.
+FOUND = 4
+
 
 def days_present(client: IntervalsClient, start: date, end: date) -> set[date]:
     """The days between start and end that hold at least one field we write.
