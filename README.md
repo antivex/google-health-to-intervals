@@ -193,7 +193,10 @@ computed in UTC, which is not your day: at 21:30 in New York, UTC is already
 tomorrow, so a run asks Google for a day that has not started and skips the one
 that just ended. `ghti check` says so too, under **Time zone**. With it set,
 nights keep landing on the day you wake up even on the two weekends the clock
-moves (`tests/test_time.py`).
+moves (`tests/test_time.py`). This holds for a long `backfill` too, which is cut
+into 90-day windows: the 25-hour day of October and the 23-hour day of March are
+asked for by exactly one window each, even when they fall on the seam between
+two of them (`tests/test_dst_window.py`).
 
 ### 8. Authorize Google (first time)
 
