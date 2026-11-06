@@ -131,7 +131,7 @@ def windows(start: date, end: date, size: int = WINDOW_DAYS) -> Iterator[tuple[d
 
 def open_google(settings: Settings, http: httpx.Client) -> tuple[GoogleHealthClient, StoredToken, bool]:
     """Load the stored token, get a fresh access token, save a rotated refresh token."""
-    store = TokenStore(settings.token_file, Keys(settings.google_client_secret, settings.intervals_api_key))
+    store = TokenStore(settings.token_file, Keys(settings.google()[1], settings.intervals_api_key))
     token = store.load()
     access_token, new_refresh = refresh_access_token(settings, token, http)
     updated = False

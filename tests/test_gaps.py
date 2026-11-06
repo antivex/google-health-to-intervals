@@ -27,8 +27,9 @@ import httpx
 import pytest
 
 from conftest import API_KEY, INTERVALS_WELLNESS
-from ghti import gaps
+from ghti import config, gaps
 from ghti.cli import build_parser, main
+from ghti.errors import ConfigError
 from ghti.intervals import CHUNK_SIZE, IntervalsClient
 from test_unfinished import broke_halfway  # noqa: F401
 
@@ -259,3 +260,65 @@ def test_the_last_window_is_a_single_day_and_the_walk_still_ends():
 def test_a_range_of_one_day_is_one_window():
     start = date(2026, 10, 1)
     assert gaps.windows(start, start) == [(start, start)]
+
+
+# --- the setup it asks for ---------------------------------------------------
+#
+# Measured on 6 November 2026, after the command above was working: `ghti gaps`
+# reads intervals.icu and nothing else, yet it died on
+# "Missing setting(s): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET" because every
+# command loaded the whole setup. The person who most needs this answer - "is
+# my backfill really missing those days?" - was asked for a Google OAuth client
+# first. These tests hold the narrowing, and the three after them hold the line
+# it must not cross: nothing else may lose its setup check.
+
+
+@pytest.fixture
+def only_the_intervals_key(monkeypatch):
+    """A computer with the intervals.icu key and no Google settings at all."""
+    monkeypatch.setenv("INTERVALS_API_KEY", API_KEY)
+    monkeypatch.setenv("INTERVALS_ATHLETE_ID", "i42")
+
+
+def test_gaps_needs_only_the_intervals_key(only_the_intervals_key, mock_http, capsys):
+    serve(mock_http, [])
+    assert main(["gaps", "--days", "7"]) == 1
+    printed = capsys.readouterr()
+    assert "nothing of ours on 7 of the 7 day(s)" in printed.out
+    assert "GOOGLE" not in printed.err and printed.err == ""
+
+
+def test_the_commands_that_use_google_still_demand_it(only_the_intervals_key, capsys):
+    """The narrowing is per command, not a weaker check for everybody."""
+    for command in (["sync"], ["backfill", "--from", "2026-10-01"], ["auth-url"], ["status"]):
+        assert main(command) == 2, command
+        err = capsys.readouterr().err
+        assert "GOOGLE_CLIENT_ID" in err and "GOOGLE_CLIENT_SECRET" in err, command
+        assert "INTERVALS_API_KEY" not in err, command  # that one is set
+
+
+def test_settings_loaded_without_google_refuse_to_hand_out_credentials(only_the_intervals_key):
+    """The second half of the narrowing: empty credentials never reach Google.
+
+    `load_settings(needs=INTERVALS_ONLY)` leaves the Google fields empty. If a
+    command asked for that set and then talked to Google, an empty client id
+    would go out over the network and come back as Google's own obscure
+    refusal. `Settings.google()` is the only way in, and it stops first.
+    """
+    settings = config.load_settings(needs=config.INTERVALS_ONLY)
+    assert settings.intervals_api_key == API_KEY
+    with pytest.raises(ConfigError) as error:
+        settings.google()
+    assert "GOOGLE_CLIENT_ID" in str(error.value)
+    assert "GOOGLE_CLIENT_SECRET" in str(error.value)
+
+
+def test_a_full_setup_still_gives_gaps_the_google_values(settings):
+    """Narrowing the requirement does not hide settings that are there."""
+    narrow = config.load_settings(needs=config.INTERVALS_ONLY)
+    assert narrow.google() == (settings.google_client_id, settings.google_client_secret)
+
+
+def test_missing_settings_can_be_asked_about_one_command(only_the_intervals_key):
+    assert config.missing_settings() == ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+    assert config.missing_settings(needs=config.INTERVALS_ONLY) == []

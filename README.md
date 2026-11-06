@@ -468,7 +468,7 @@ uv run ghti sync --dry-run --show-values  # look without writing
 uv run ghti backfill --from 2025-01-01    # copy older history
 uv run ghti export-csv -o wellness.csv    # last 30 days as CSV (--from/--to)
 uv run ghti status                        # the last run, and when the authorization expires
-uv run ghti gaps                          # which days intervals.icu really has nothing on
+uv run ghti gaps                          # which days intervals.icu really has nothing on (intervals key only)
 uv run ghti schedule                      # the daily task, written out (installs nothing)
 ```
 
@@ -526,6 +526,14 @@ month costs 1 request and a whole year 4, out of the 5,000 a day intervals.icu
 allows. Use `--from`/`--to` for any other range, or `--days N` when the diary
 has no gap to check. It exits 1 when something is missing, so a scheduled task
 can use it as an alarm.
+
+**It is the one command that needs only `INTERVALS_API_KEY`** (plus
+`INTERVALS_ATHLETE_ID` if your key is not your own). It never talks to Google,
+so it does not ask you for `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and
+it does not need a saved authorization: you can answer "is my history really
+up there?" before setting up the Google side at all, or after that
+authorization has expired. Every other command still refuses to start without
+the full setup.
 
 #### How far back your history goes
 

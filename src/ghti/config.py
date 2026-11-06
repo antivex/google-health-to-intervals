@@ -20,6 +20,15 @@ APP_NAME = "ghti"
 REQUIRED = ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "INTERVALS_API_KEY")
 OPTIONAL = ("INTERVALS_ATHLETE_ID", "GHTI_TOKEN_FILE", "GHTI_TIMEZONE", "GHTI_JOURNAL_FILE")
 
+# What a command that never touches Google needs. `ghti gaps` only reads
+# intervals.icu: asking it for a Google authorization it will not use turns a
+# read-only check into a setup job. Narrowing the requirement is not the same
+# as making the Google settings optional: `Settings.google()` still refuses to
+# hand out credentials that were never loaded, so a command that asks for this
+# set and then talks to Google fails with a clear message instead of sending an
+# empty client id.
+INTERVALS_ONLY = ("INTERVALS_API_KEY",)
+
 
 def utcnow() -> datetime:
     """Current time in UTC. Tests replace this function to freeze the clock."""
@@ -76,6 +85,26 @@ class Settings:
         """Values that must never appear in output."""
         return (self.google_client_secret, self.intervals_api_key)
 
+    def google(self) -> tuple[str, str]:
+        """The Google client id and secret, or a clear error if they are not here.
+
+        Settings loaded for a Google-free command (see `INTERVALS_ONLY`) carry
+        empty strings here. Going through this method means such a command
+        cannot quietly send an empty client id to Google: it stops with the
+        same message a missing setting gives anywhere else.
+        """
+        missing = [
+            key
+            for key, value in (
+                ("GOOGLE_CLIENT_ID", self.google_client_id),
+                ("GOOGLE_CLIENT_SECRET", self.google_client_secret),
+            )
+            if not value
+        ]
+        if missing:
+            raise ConfigError(describe_missing(missing))
+        return self.google_client_id, self.google_client_secret
+
     def today(self) -> date:
         """Today's date in the user's time zone (GHTI_TIMEZONE or the system one)."""
         now = utcnow()
@@ -90,25 +119,39 @@ def is_configured() -> bool:
     return any(values.get(key) for key in REQUIRED)
 
 
-def missing_settings(values: dict[str, str] | None = None) -> list[str]:
-    """The required settings that are not set, in the order of REQUIRED.
+def describe_missing(missing: list[str]) -> str:
+    """The one message that says a setting is not there and where to put it."""
+    return (
+        f"Missing setting(s): {', '.join(missing)}. "
+        "On GitHub add them under Settings > Secrets and variables > Actions. "
+        f"On your computer set them as environment variables or in {config_dir() / 'config.env'}."
+    )
+
+
+def missing_settings(
+    values: dict[str, str] | None = None, needs: tuple[str, ...] = REQUIRED
+) -> list[str]:
+    """The settings of `needs` that are not set, in the order of `needs`.
 
     Empty means a run can at least start. `ghti status` uses it to tell apart
     a daily task that never fired from one that fires and dies on the setup.
+    `needs` narrows the question to one command's own settings.
     """
     values = raw_values() if values is None else values
-    return [key for key in REQUIRED if not values.get(key)]
+    return [key for key in needs if not values.get(key)]
 
 
-def load_settings() -> Settings:
+def load_settings(needs: tuple[str, ...] = REQUIRED) -> Settings:
+    """Read the settings, refusing to go on without the ones in `needs`.
+
+    The default asks for everything, so every command keeps the setup check it
+    had. A command that never touches Google passes `INTERVALS_ONLY`; the
+    Google values are still read when they happen to be there.
+    """
     values = raw_values()
-    missing = missing_settings(values)
+    missing = missing_settings(values, needs)
     if missing:
-        raise ConfigError(
-            f"Missing setting(s): {', '.join(missing)}. "
-            "On GitHub add them under Settings > Secrets and variables > Actions. "
-            f"On your computer set them as environment variables or in {config_dir() / 'config.env'}."
-        )
+        raise ConfigError(describe_missing(missing))
     tz = values.get("GHTI_TIMEZONE") or None
     if tz:
         try:
@@ -120,9 +163,9 @@ def load_settings() -> Settings:
     token_file = Path(values.get("GHTI_TOKEN_FILE") or config_dir() / "token.enc")
     athlete = values.get("INTERVALS_ATHLETE_ID") or "0"  # "0" means "the owner of the API key"
     return Settings(
-        google_client_id=values["GOOGLE_CLIENT_ID"],
-        google_client_secret=values["GOOGLE_CLIENT_SECRET"],
-        intervals_api_key=values["INTERVALS_API_KEY"],
+        google_client_id=values.get("GOOGLE_CLIENT_ID", ""),
+        google_client_secret=values.get("GOOGLE_CLIENT_SECRET", ""),
+        intervals_api_key=values.get("INTERVALS_API_KEY", ""),
         intervals_athlete_id=athlete,
         token_file=token_file,
         timezone=tz,

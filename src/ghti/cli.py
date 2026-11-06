@@ -22,6 +22,7 @@ from ghti.check import markdown as check_markdown
 from ghti.check import run_checks
 from ghti.check import text as check_text
 from ghti.config import (
+    INTERVALS_ONLY,
     REQUIRED,
     is_configured,
     load_settings,
@@ -72,7 +73,8 @@ def _http() -> httpx.Client:
 
 
 def _keys(settings) -> Keys:
-    return Keys(settings.google_client_secret, settings.intervals_api_key)
+    """The pair that encrypts the stored token: it needs the Google secret."""
+    return Keys(settings.google()[1], settings.intervals_api_key)
 
 
 def _day(text: str) -> date:
@@ -339,8 +341,14 @@ def cmd_gaps(args) -> int:
     complaining about, which is the case that sends people here: the answer is
     often that most of it is already there and the command to finish it is
     much shorter than the one `ghti status` prints.
+
+    This reads intervals.icu and nothing else, so it asks only for
+    INTERVALS_API_KEY. Somebody who wants to know what is already on the site
+    should not have to set up a Google authorization first - that is the setup
+    a broken backfill makes people doubt, and this is the command that answers
+    the doubt.
     """
-    settings = load_settings()
+    settings = load_settings(needs=INTERVALS_ONLY)
     end = args.to or settings.today()
     if args.start:
         start = args.start
@@ -525,7 +533,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log", help="log file (default: one inside the ghti config folder)")
     p.set_defaults(func=cmd_schedule)
 
-    p = sub.add_parser("gaps", help="ask intervals.icu which days it has nothing of ours on; writes nothing")
+    p = sub.add_parser(
+        "gaps",
+        help="ask intervals.icu which days it has nothing of ours on; writes nothing,"
+        " needs only INTERVALS_API_KEY",
+    )
     p.add_argument("--from", dest="start", type=_day, metavar="YYYY-MM-DD", help="default: the gap the diary reports")
     p.add_argument("--to", type=_day, metavar="YYYY-MM-DD", help="default: today")
     p.add_argument("--days", type=int, default=30, help="used when neither --from nor a diary gap gives a start (default 30)")

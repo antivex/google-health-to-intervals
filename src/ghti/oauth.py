@@ -138,10 +138,11 @@ def build_auth_url(settings: Settings, keys: Keys, encode_client_id: bool = Fals
         "code_challenge": keys.pkce_challenge(state),
         "code_challenge_method": "S256",
     }
+    google_client_id, _ = settings.google()
     if encode_client_id:
-        client_id = "".join(f"%{b:02X}" for b in settings.google_client_id.encode("utf-8"))
+        client_id = "".join(f"%{b:02X}" for b in google_client_id.encode("utf-8"))
     else:
-        client_id = quote(settings.google_client_id, safe="")
+        client_id = quote(google_client_id, safe="")
     return f"{AUTH_ENDPOINT}?client_id={client_id}&{urlencode(params)}"
 
 
@@ -185,6 +186,7 @@ def exchange_code(
     Returns the token and the requested scopes that the user did not grant
     (Google lets users untick individual permissions on the consent screen).
     """
+    google_client_id, google_client_secret = settings.google()
     code, state = parse_redirect_url(redirect_url)
     if not keys.check_state(state):
         raise AuthError(
@@ -195,8 +197,8 @@ def exchange_code(
         TOKEN_ENDPOINT,
         data={
             "code": code,
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret,
+            "client_id": google_client_id,
+            "client_secret": google_client_secret,
             "redirect_uri": REDIRECT_URI,
             "grant_type": "authorization_code",
             "code_verifier": keys.pkce_verifier(state),
@@ -229,11 +231,12 @@ def exchange_code(
 
 def refresh_access_token(settings: Settings, token: StoredToken, http: httpx.Client) -> tuple[str, str | None]:
     """Return (access_token, new_refresh_token or None)."""
+    google_client_id, google_client_secret = settings.google()
     response = http.post(
         TOKEN_ENDPOINT,
         data={
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret,
+            "client_id": google_client_id,
+            "client_secret": google_client_secret,
             "refresh_token": token.refresh_token,
             "grant_type": "refresh_token",
         },
