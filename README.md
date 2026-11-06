@@ -52,6 +52,13 @@ smart scale, an altimeter). The Google Health API does not provide the Fitbit
 *sleep score*, so `sleepScore` stays empty. Empty values are never sent, so they never erase what
 you already have in intervals.icu.
 
+A number that cannot be a measurement is left out too, and the command says which one: a weight of
+2,000 kg or an oxygen saturation of 150% is outside the range Google's own API documents, and on
+your intervals.icu chart it would flatten a year of real readings into a straight line. The other
+fields of that day still go, and intervals.icu keeps whatever it already had for the one that was
+dropped. No medical limit is added on top of Google's: a weigh-in this tool cannot prove impossible
+is sent as it is.
+
 > **Status: early version.** The Google Health API replaced the Fitbit Web API
 > in 2026. This tool follows Google's documentation, but some field names have
 > not been checked against real data yet. If a value looks wrong, please open an
