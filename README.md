@@ -256,6 +256,24 @@ the first sync:
 If intervals.icu does not say, the line is a `note` and promises nothing: the
 check never claims your data will be written when it has not been able to tell.
 
+Its exit codes keep "the setup is not finished yet" apart from "the setup
+broke", because a scheduled `check` is the one place where those two read the
+same:
+
+| exit | what happened |
+|---|---|
+| `0` | everything is ready — the next run will copy your data |
+| `6` | nothing is broken: a step of **yours** is still missing (no secrets yet, no Google authorization yet, or one to authorize again) |
+| `2` | something you set is refused or wrong: the intervals.icu key, the athlete, a setting |
+| `3` | only the Google side refuses |
+| `1` | a check could not run — network down, intervals.icu or Google unreachable |
+
+`6` is deliberately not `1`/`2`/`3`: before this, a repository with no secrets
+yet and a repository whose key had just been revoked both exited `2`, so a task
+of yours could not tell "I have not finished the README" from "something that
+worked yesterday stopped". The **Check setup** workflow is unaffected: any
+non-zero still turns the run red.
+
 - The Re-authorize run should be green, and its Summary shows a table of the
   days copied.
 - Open intervals.icu: the wellness values appear on the calendar and in the

@@ -1,10 +1,11 @@
 """Command line: ghti demo | check | sync | backfill | auth-url | auth-finish | export-csv | schedule | status.
 
 Exit codes: 0 ok, 1 error, 2 configuration problem (or no command given),
-3 Google authorization needed. Two commands are alarms and say something that
-is not a failure, so they have codes of their own, outside those three:
-4 (`gaps`) some days are missing on intervals.icu, 5 (`status
---fail-on-reminder`) the Google authorization needs renewing soon.
+3 Google authorization needed. Three commands say something that is not a
+failure, so they have codes of their own, outside those three: 4 (`gaps`) some
+days are missing on intervals.icu, 5 (`status --fail-on-reminder`) the Google
+authorization needs renewing soon, 6 (`check`) nothing is broken and a step of
+yours is simply not done yet.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from pathlib import Path
 import httpx
 
 from ghti import __version__
+from ghti import check as check_mod
 from ghti.check import exit_code as check_exit_code
 from ghti.check import markdown as check_markdown
 from ghti.check import run_checks
@@ -285,7 +287,13 @@ def cmd_demo(args) -> int:
 
 
 def cmd_check(args) -> int:
-    """Say what is ready and what is missing, without writing anything."""
+    """Say what is ready and what is missing, without writing anything.
+
+    Exit codes: `check.WAITING` (6) when every bad line is only waiting for a
+    step of the person (secrets, Google authorization), and the ordinary 1/2/3
+    as soon as one line is a real problem. See `check.WAITING` for the
+    measurement behind the difference.
+    """
     with _http() as http:
         steps = run_checks(http)
     print(check_text(steps))
@@ -394,8 +402,9 @@ def cmd_gaps(args) -> int:
 #
 # So the reminder gets a code of its own, outside the three the errors use
 # everywhere (1 any failure, 2 bad setup, 3 Google authorization needed) and
-# different from `gaps.FOUND` (4), which already means "days are missing". Any
-# non-zero still turns the GitHub run red and still sends the email, so
+# different from `gaps.FOUND` (4), which already means "days are missing", and
+# from `check.WAITING` (6), "the setup is still waiting for you". Any non-zero
+# still turns the GitHub run red and still sends the email, so
 # .github/workflows/reminder.yml keeps working exactly as before.
 REMINDING = 5
 
@@ -505,7 +514,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="also print the records intervals.icu would receive")
     p.set_defaults(func=cmd_demo)
 
-    p = sub.add_parser("check", help="check the setup before the first sync; writes nothing")
+    p = sub.add_parser(
+        "check",
+        help="check the setup before the first sync; writes nothing,"
+        f" exits {check_mod.WAITING} when a step of yours is still missing,"
+        " 1/2/3 when something is broken",
+        description="Say line by line what is ready and what is not, before the first sync."
+        " It writes nothing to intervals.icu and prints no health value."
+        f" Exit codes, for a scheduled task: 0 everything is ready, {check_mod.WAITING} when"
+        " nothing is broken and a step of yours is simply not done yet (no secrets, no Google"
+        " authorization, or one to renew), 2 when something you set is refused or a setting is"
+        " wrong, 3 when only the Google side refuses, 1 when a check could not run (network)."
+        f" {check_mod.WAITING} is not 1/2/3 on purpose: a setup still to finish must not arrive"
+        " as a setup that broke.",
+    )
     p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("sync", help="copy the last N days (default 3); safe to repeat")

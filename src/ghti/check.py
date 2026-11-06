@@ -28,6 +28,31 @@ PROBLEM = "PROBLEM"
 # it is usually the cause of the others.
 CODE_ORDER = (2, 1, 3)
 
+#: What `ghti check` exits with when nothing is broken and a step of yours is simply
+#: not done yet.
+#
+# Measured on 6 November 2026, before any setting existed and then with one:
+#
+#   nothing configured yet (MISSING Secrets)            -> 2
+#   the intervals.icu key you set is refused, HTTP 401   -> 2
+#   Google never authorized (MISSING)                   -> 3
+#   the Google authorization was revoked (MISSING)      -> 3
+#   dead network on intervals.icu (PROBLEM)             -> 1
+#
+# A line is bad in two different ways, and the codes mixed them: 2 meant both "you
+# have not written the secrets yet" and "the key you wrote is refused". So a
+# scheduled task could not tell "the setup is not finished, it is your turn" from
+# "the setup worked yesterday and something broke". The first is normal while a
+# person is still following the README; the second is the one worth an alarm.
+#
+# So the waiting case gets a code of its own: when every bad line is MISSING, the
+# exit is WAITING. It is outside the three the errors use everywhere (1 any
+# failure, 2 bad setup, 3 Google authorization needed) and outside `gaps.FOUND`
+# (4, "days are missing") and `cli.REMINDING` (5, "renew it soon"). The moment one
+# line is a PROBLEM, the old codes come back unchanged: something really is broken,
+# and the configuration problem is still reported first.
+WAITING = 6
+
 
 @dataclass(frozen=True)
 class Step:
@@ -175,11 +200,18 @@ def run_checks(http: httpx.Client) -> list[Step]:
 
 
 def exit_code(steps: list[Step]) -> int:
-    codes = {step.exit_code for step in steps}
+    bad = [step for step in steps if step.bad]
+    if not bad:
+        return 0
+    if all(step.state == MISSING for step in bad):
+        return WAITING
+    codes = {step.exit_code for step in bad}
     for code in CODE_ORDER:
         if code in codes:
             return code
-    return 0
+    # Never reached today: every bad line above carries a code. If one ever
+    # forgets it, a bad line must not go out as a clean answer.
+    return 1
 
 
 def _verdict(steps: list[Step]) -> str:
