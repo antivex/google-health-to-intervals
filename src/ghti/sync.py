@@ -163,6 +163,40 @@ def _check(report: SyncReport) -> None:
         raise GhtiError("Nothing could be read from Google Health:\n" + details)
 
 
+def _history_note(report: SyncReport) -> None:
+    """Say out loud when Google had nothing for the days that were asked for.
+
+    Google keeps a user's data from the day it was recorded and sets no limit on
+    how far back an application may ask
+    (https://developers.google.com/health/data-types, read 6 November 2026), so
+    `backfill --from 2019-01-01` is a legal request that answers 200 with no data
+    points: those days are simply empty, usually because the watch was not
+    connected yet. Without this note the command printed `Sent 0 day(s)` and
+    nothing else, which reads exactly like a broken setup.
+
+    It stays quiet when something else already explains the emptiness (a
+    permission that was not granted, a metric that failed), so the user is never
+    sent looking at the wrong thing.
+    """
+    if report.failed or (report.skipped and not report.ok):
+        return
+    if not report.days:
+        report.notes.append(
+            f"Google Health had no data at all for {report.start} to {report.end}. "
+            "Your history there starts the day the data was first recorded, so these days are empty "
+            "on Google: nothing was sent and nothing is broken here. To see data, ask for a recent "
+            "period (ghti sync)."
+        )
+        return
+    first = min(report.days)
+    if first > report.start:
+        report.notes.append(
+            f"Nothing before {first}: your history on Google Health starts there. "
+            f"The days asked for earlier ({report.start} to {first - timedelta(days=1)}) are empty, "
+            "so a backfill that starts before that day only costs requests."
+        )
+
+
 def run_sync(settings: Settings, start: date, end: date, http: httpx.Client, dry_run: bool = False) -> SyncReport:
     client, token, updated = open_google(settings, http)
     intervals = IntervalsClient(http, settings.intervals_api_key, settings.intervals_athlete_id)
@@ -182,6 +216,7 @@ def run_sync(settings: Settings, start: date, end: date, http: httpx.Client, dry
         report.records_sent += len(records)
         done_through = window_end
     _check(report)
+    _history_note(report)
     return report
 
 
@@ -204,6 +239,7 @@ def export_csv(settings: Settings, start: date, end: date, http: httpx.Client) -
     for window_start, window_end in windows(start, end):
         report.days.update(collect(client, token, window_start, window_end, report))
     _check(report)
+    _history_note(report)
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(("date", *FIELDS))
