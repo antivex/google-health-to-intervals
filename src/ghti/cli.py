@@ -61,6 +61,8 @@ from ghti.schedule import other_platforms
 from ghti.schedule import text as schedule_text
 from ghti.mapping import merge, to_wellness_records
 from ghti.sync import SyncReport, export_csv, run_sync
+from ghti import gaps as gaps_mod
+from ghti.intervals import IntervalsClient
 
 MAX_DAYS = 3650
 
@@ -328,6 +330,43 @@ def _ask_google_if_alive(settings, token: StoredToken) -> StoredToken:
     return alive
 
 
+def cmd_gaps(args) -> int:
+    """Ask intervals.icu which days of a range it has nothing of ours on.
+
+    `ghti status` reports what this computer tried to send; it cannot see a
+    backfill finished by hand, a day the watch never recorded, or a day lost
+    on the way. Without `--from` the range is the gap the diary is still
+    complaining about, which is the case that sends people here: the answer is
+    often that most of it is already there and the command to finish it is
+    much shorter than the one `ghti status` prints.
+    """
+    settings = load_settings()
+    end = args.to or settings.today()
+    if args.start:
+        start = args.start
+    else:
+        unfinished = journal.unfinished()
+        gap = unfinished.gap if unfinished else None
+        if gap:
+            start, end = gap[0], (args.to or gap[1])
+            print(f"Checking the range the diary says is unfinished: {start} to {end}.")
+        else:
+            start = end - timedelta(days=args.days - 1)
+    if start > end:
+        raise ConfigError(f"--from ({start}) is after --to ({end}).")
+    if (end - start).days >= MAX_DAYS:
+        raise ConfigError(f"The range is longer than {MAX_DAYS} days.")
+    cost = gaps_mod.requests_for(start, end)
+    print(f"Reading {(end - start).days + 1} day(s) back from intervals.icu ({cost} request(s))...")
+    with _http() as http:
+        client = IntervalsClient(http, settings.intervals_api_key, settings.intervals_athlete_id)
+        ranges = gaps_mod.missing(client, start, end)
+    text = gaps_mod.text(ranges, start, end)
+    print(text)
+    write_summary("## Days missing on intervals.icu\n\n```\n" + text + "\n```")
+    return 1 if ranges else 0
+
+
 def cmd_status(args) -> int:
     if _unconfigured(args):
         return 0
@@ -485,6 +524,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--os", choices=PLATFORMS, help="show it for another system (default: this one)")
     p.add_argument("--log", help="log file (default: one inside the ghti config folder)")
     p.set_defaults(func=cmd_schedule)
+
+    p = sub.add_parser("gaps", help="ask intervals.icu which days it has nothing of ours on; writes nothing")
+    p.add_argument("--from", dest="start", type=_day, metavar="YYYY-MM-DD", help="default: the gap the diary reports")
+    p.add_argument("--to", type=_day, metavar="YYYY-MM-DD", help="default: today")
+    p.add_argument("--days", type=int, default=30, help="used when neither --from nor a diary gap gives a start (default 30)")
+    p.set_defaults(func=cmd_gaps)
 
     p = sub.add_parser("status", help="show the last run and when the Google authorization expires")
     p.add_argument("--remind-hours", type=float, default=36, help="remind when fewer hours are left (default 36)")

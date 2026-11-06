@@ -468,6 +468,7 @@ uv run ghti sync --dry-run --show-values  # look without writing
 uv run ghti backfill --from 2025-01-01    # copy older history
 uv run ghti export-csv -o wellness.csv    # last 30 days as CSV (--from/--to)
 uv run ghti status                        # the last run, and when the authorization expires
+uv run ghti gaps                          # which days intervals.icu really has nothing on
 uv run ghti schedule                      # the daily task, written out (installs nothing)
 ```
 
@@ -500,6 +501,31 @@ Last sync: 2026-10-23 06:30 UTC (today), 3 day(s) sent.
   2026-10-22 are still missing on intervals.icu.
   Finish it with: ghti backfill --from 2026-07-05 --to 2026-10-22
 ```
+
+#### `ghti gaps`: ask intervals.icu instead of believing the diary
+
+Everything above comes from a small diary of the runs on this computer. The
+diary knows what *was tried here*; it does not know what is actually on
+intervals.icu. If you finished that range another way - by hand, from another
+computer, with a shorter backfill - the diary keeps asking for all 110 days.
+
+`ghti gaps` asks intervals.icu itself. It reads the range back, day by day,
+and names only what is really missing, with a command that fills just that:
+
+```
+$ uv run ghti gaps
+Checking the range the diary says is unfinished: 2026-07-05 to 2026-10-22.
+Reading 110 day(s) back from intervals.icu (2 request(s))...
+intervals.icu has nothing of ours on 22 of the 110 day(s) from 2026-07-05 to 2026-10-22:
+  2026-10-01 to 2026-10-22 (22 day(s))   ghti backfill --from 2026-10-01 --to 2026-10-22
+  A day you did not wear the watch looks the same as a day that was lost: a backfill of it will simply find nothing to send.
+```
+
+It writes nothing, and asking is cheap: the days are read 100 at a time, so a
+month costs 1 request and a whole year 4, out of the 5,000 a day intervals.icu
+allows. Use `--from`/`--to` for any other range, or `--days N` when the diary
+has no gap to check. It exits 1 when something is missing, so a scheduled task
+can use it as an alarm.
 
 #### How far back your history goes
 
