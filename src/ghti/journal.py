@@ -39,10 +39,24 @@ class Run:
     failed: tuple[str, ...] = ()
     skipped: tuple[str, ...] = ()
     error: str = ""
+    resume_from: date | None = None  # set only when a long run broke part-way: first day still missing
 
     @property
     def ok(self) -> bool:
         return not self.error and not self.failed
+
+    @property
+    def gap(self) -> tuple[date, date] | None:
+        """The days this run was asked for and never wrote, if it broke part-way."""
+        if self.resume_from is None or self.end is None or self.resume_from > self.end:
+            return None
+        return self.resume_from, self.end
+
+    def covers(self, gap: tuple[date, date]) -> bool:
+        """True when this run wrote the whole gap: same range or wider, and no error."""
+        if not self.ok or self.start is None or self.end is None:
+            return False
+        return self.start <= gap[0] and self.end >= gap[1]
 
     def as_dict(self) -> dict:
         return {
@@ -54,6 +68,7 @@ class Run:
             "failed": list(self.failed),
             "skipped": list(self.skipped),
             "error": self.error,
+            "resume_from": self.resume_from.isoformat() if self.resume_from else None,
         }
 
     @classmethod
@@ -70,6 +85,7 @@ class Run:
             failed=tuple(data.get("failed") or ()),
             skipped=tuple(data.get("skipped") or ()),
             error=str(data.get("error") or ""),
+            resume_from=day(data.get("resume_from")),
         )
 
 
@@ -86,9 +102,31 @@ def from_report(report, command: str = "sync") -> Run:
     )
 
 
-def failure(message: str, command: str = "sync", start: date | None = None, end: date | None = None) -> Run:
-    """A run that could not finish: the message is what the user was shown."""
-    return Run(at=config.utcnow(), command=command, start=start, end=end, error=message)
+def failure(
+    message: str,
+    command: str = "sync",
+    start: date | None = None,
+    end: date | None = None,
+    sent: int = 0,
+    resume_from: date | None = None,
+) -> Run:
+    """A run that could not finish: the message is what the user was shown.
+
+    `sent` and `resume_from` are what a *part-way* break knows and a plain
+    failure does not: how many days did reach intervals.icu, and the first day
+    that did not. Writing `sent=0` for a backfill that pushed 90 days before
+    dying made the diary disagree with the days really on intervals.icu, and
+    left the gap written down nowhere a program could read.
+    """
+    return Run(
+        at=config.utcnow(),
+        command=command,
+        start=start,
+        end=end,
+        sent=sent,
+        error=message,
+        resume_from=resume_from,
+    )
 
 
 def append(run: Run, path: Path | None = None) -> Path:
@@ -130,6 +168,32 @@ def last(path: Path | None = None) -> Run | None:
     return runs[-1] if runs else None
 
 
+def unfinished(path: Path | None = None, runs: list[Run] | None = None) -> Run | None:
+    """The most recent part-way break whose days are still missing, if any.
+
+    `ghti status` used to read only the last line of the diary. A backfill that
+    died halfway said so loudly that evening, and then the next morning's
+    daily sync succeeded and became the last line: from that moment nothing
+    named the gap again, and the missing months were invisible to the one
+    person who paid to have them. Here the diary is read backwards for the
+    newest run that broke part-way, and the runs after it are checked for one
+    that wrote the whole gap.
+
+    Only the newest break is followed. Two separate gaps are rare (the resume
+    command covers everything from the break to the end of the range), and
+    reporting a stack of them would bury the one that matters.
+    """
+    runs = read(path) if runs is None else runs
+    for index in range(len(runs) - 1, -1, -1):
+        gap = runs[index].gap
+        if gap is None:
+            continue
+        if any(later.covers(gap) for later in runs[index + 1 :]):
+            return None  # a later run filled it: nothing to report
+        return runs[index]
+    return None
+
+
 def _ago(days: int) -> str:
     if days <= 0:
         return "today"
@@ -145,11 +209,22 @@ SETUP_FIRST = (
 )
 
 
+def gap_text(run: Run) -> list[str]:
+    """The two lines that name an unfinished range and the command that ends it."""
+    first, last_day = run.gap
+    return [
+        f"  A {run.command} stopped part-way on {first - timedelta(days=1)} and was never finished:"
+        f" {first} to {last_day} are still missing on intervals.icu.",
+        f"  Finish it with: ghti backfill --from {first} --to {last_day}",
+    ]
+
+
 def summary(
     run: Run | None,
     now: datetime | None = None,
     schedule_hint: bool = True,
     setup_ok: bool = True,
+    unfinished_run: Run | None = None,
 ) -> str:
     """What to print under `ghti status`: the last run, in two lines at most.
 
@@ -187,4 +262,9 @@ def summary(
             else "  If it should run on its own, the daily task is not firing: check it,"
             " or print it again with `ghti schedule`."
         )
+    # The broken run says it itself, in its own error text: repeating it here
+    # would print the same gap twice. The point of this line is the morning
+    # after, when a successful run has taken its place as the last line.
+    if unfinished_run is not None and unfinished_run != run and unfinished_run.gap:
+        lines += gap_text(unfinished_run)
     return "\n".join(lines)

@@ -127,7 +127,17 @@ def _run_and_record(
             report = run_sync(settings, start, end, http, dry_run=dry_run, confirm=confirm)
     except GhtiError as error:
         if not dry_run:
-            journal.append(journal.failure(str(error), command=command, start=start, end=end))
+            journal.append(
+                journal.failure(
+                    str(error),
+                    command=command,
+                    start=start,
+                    end=end,
+                    # A break part-way carries these; any other failure wrote nothing.
+                    sent=getattr(error, "written", 0),
+                    resume_from=getattr(error, "resume_from", None),
+                )
+            )
         raise
     if not dry_run:
         journal.append(journal.from_report(report, command=command))
@@ -323,7 +333,14 @@ def cmd_status(args) -> int:
         return 0
     if not in_actions():
         # On GitHub the runner is new every time, so the diary is always empty there.
-        print(journal.summary(journal.last(), setup_ok=not missing_settings()))
+        runs = journal.read()
+        print(
+            journal.summary(
+                runs[-1] if runs else None,
+                setup_ok=not missing_settings(),
+                unfinished_run=journal.unfinished(runs=runs),
+            )
+        )
     settings = load_settings()
     token = TokenStore(settings.token_file, _keys(settings)).load()
     remaining = token.remaining()

@@ -490,6 +490,17 @@ nobody was watching can still be picked up in the morning. When the very first
 window is the one that fails, nothing was written and no `--from` is offered:
 running the same command again is the right move.
 
+The gap is not forgotten when the next morning goes well, either. A daily sync
+writes the last three days, not the missing months, so `status` keeps naming the
+unfinished range under the good news until a run actually fills it:
+
+```
+Last sync: 2026-10-23 06:30 UTC (today), 3 day(s) sent.
+  A sync stopped part-way on 2026-07-04 and was never finished: 2026-07-05 to
+  2026-10-22 are still missing on intervals.icu.
+  Finish it with: ghti backfill --from 2026-07-05 --to 2026-10-22
+```
+
 #### How far back your history goes
 
 Google keeps your data from the day it was recorded and sets no limit on how
@@ -563,9 +574,12 @@ Last sync: 2026-11-01 06:30 UTC (4 days ago), 3 day(s) sent.
 ```
 
 A run that failed is written too, with the message you would have seen, and a
-run with `--dry-run` is not written at all. The diary holds dates, counts,
-metric names and error messages only — never your values and never a secret —
-so you can attach it to a bug report as it is.
+run with `--dry-run` is not written at all. A long run that broke part-way also
+records how many days did reach intervals.icu and the first day that did not, so
+the diary agrees with what is really there and `status` can keep reminding you of
+an unfinished range. The diary holds dates, counts, metric names and error
+messages only — never your values and never a secret — so you can attach it to a
+bug report as it is.
 
 ## Development
 

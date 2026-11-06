@@ -289,11 +289,22 @@ def _interrupted(error: Exception, done_through: date, end: date, report: SyncRe
 
     An expired authorization keeps its own class, so the CLI still shows the
     authorization link instead of a bare error; it only gains the resume line.
+
+    The three numbers of the break are also attached to the exception, not only
+    written into its text: the diary needs them as fields (how many days really
+    landed, the first day that did not, the end that was asked for), and parsing
+    them back out of an English sentence would be a trap for the next change.
     """
     written = report.records_sent
     if isinstance(error, AuthRequired):
-        return AuthRequired(resume_text(error, done_through, end, written))
-    return SyncInterrupted(error, done_through, end, written)
+        out: GhtiError = AuthRequired(resume_text(error, done_through, end, written))
+    else:
+        out = SyncInterrupted(error, done_through, end, written)
+    out.done_through = done_through
+    out.resume_from = done_through + timedelta(days=1)
+    out.written = written
+    out.asked_end = end
+    return out
 
 
 def export_csv(settings: Settings, start: date, end: date, http: httpx.Client) -> tuple[str, SyncReport]:
