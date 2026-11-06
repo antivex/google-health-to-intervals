@@ -19,6 +19,10 @@ from pathlib import Path
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
+#: The one step that saves state/, shared by every workflow that can receive a
+#: new refresh token. It used to be the same ten lines pasted into each of them.
+SAVE_STEP = "bash .github/save-state.sh"
+
 # Commands whose code path reaches TokenStore.save():
 #   auth-finish -> cli.cmd_auth_finish
 #   check       -> check.run (open_google refreshes and saves)
@@ -47,8 +51,10 @@ def test_the_workflows_that_can_refresh_the_token_can_also_commit_it():
     assert set(found) == {"check.yml", "reauth.yml", "reminder.yml", "sync.yml"}
     for name, text in found.items():
         assert "contents: write" in text, f"{name} can receive a new refresh token but cannot commit it"
-        assert "git add -A state" in text, f"{name} can receive a new refresh token but never commits state/"
-        assert "git push" in text, f"{name} commits the token without pushing it"
+        assert SAVE_STEP in text, f"{name} can receive a new refresh token but never saves state/"
+    script = (WORKFLOWS.parent / "save-state.sh").read_text(encoding="utf-8")
+    assert "git add -A state" in script, "the save script never commits state/"
+    assert "git push" in script, "the save script commits the token without pushing it"
 
 
 def test_every_workflow_that_writes_state_takes_the_same_lock():

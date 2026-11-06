@@ -53,14 +53,4 @@ jobs:
 
       - name: Save what the run left in state/ (token, open gap)
         if: always()
-        run: |
-          git add -A state
-          if git diff --cached --quiet; then
-            echo "Token unchanged."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Update sync state (token, open gap)"
-          git pull --rebase --quiet
-          git push
+        run: bash .github/save-state.sh
